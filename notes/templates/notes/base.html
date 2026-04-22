@@ -25,6 +25,7 @@
   <main class="{{ container_class|default:'max-w-3xl' }} mx-auto px-4 sm:px-6 lg:px-8 py-8">
     {% block content %}{% endblock %}
   </main>
+  {% block after_main %}{% endblock %}
   {% block body_extra %}{% endblock %}
 </body>
 </html>
