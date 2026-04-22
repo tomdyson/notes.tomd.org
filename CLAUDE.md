@@ -10,7 +10,7 @@ on a Fly volume, CI auto-deploys on push to `main`.
 
 ## Commands
 
-- Run tests: `python manage.py test notes` (77 tests, ~8s)
+- Run tests: `python manage.py test notes` (113 tests, ~9s)
 - Run a single test: `python manage.py test notes.tests.test_rendering.RenderMarkdownTests.test_strips_script_tags`
 - Dev server: `DEBUG=1 python manage.py runserver`
 - Migrations (local): `DEBUG=1 python manage.py migrate`
@@ -23,8 +23,10 @@ of `manage.py test` (tests auto-detect `test` in `argv`).
 ## Working style
 
 - **Red/green TDD.** New behaviour starts with a failing test. Tests live in
-  `notes/tests/test_*.py`, one file per concern (slugs, rendering, models,
-  views_public, views_auth, password_gate, editor_markup). Django's built-in
+  `notes/tests/test_*.py`, one file per concern: `test_slugs`, `test_rendering`,
+  `test_models`, `test_views_public`, `test_views_auth`, `test_password_gate`,
+  `test_editor_markup`, `test_ui_reorg`, `test_passkey_model`,
+  `test_passkey_register`, `test_passkey_login`. Django's built-in
   `TestCase` — not pytest.
 - Don't add new abstractions without a test that motivates them.
 
@@ -46,6 +48,24 @@ of `manage.py test` (tests auto-detect `test` in `argv`).
   requires `collectstatic` to run at Docker build time in non-DEBUG mode so
   the manifest exists. See `Dockerfile` — that's why the RUN line is
   `SECRET_KEY=build python manage.py collectstatic --noinput` (no DEBUG=1).
+- **Anonymous `/` returns 404.** The app is only for viewing individual notes
+  (or editing, if logged in). There is no public landing page and no "Log in"
+  link anywhere — Tom goes to `/login/` or `/admin/` directly. Anonymous
+  pages also render without a header at all; the header only appears for
+  authenticated users and contains just New note / Passkeys / Log out.
+- **Passkey auth is built on `py_webauthn`, with RP ID hardcoded.**
+  `WEBAUTHN_RP_ID = "notes.tomd.org"` in settings — do not swap this for a
+  request-derived value. A passkey is bound to the RP ID it was registered
+  against, so changing it silently invalidates every existing passkey.
+  `notes/passkey_views.py` holds the register/login ceremonies; state
+  (challenge) lives in the session; `Passkey` rows belong to a user and
+  store `credential_id`, `public_key`, `sign_count`.
+- **Layout width: `container_class` template variable.** `base.html`'s header
+  nav and main wrapper both render `{{ container_class|default:"max-w-3xl" }}`
+  so they line up on every page. Views that need a wider shell (currently
+  only the editor, which is 2-col) pass `container_class="max-w-6xl"` in the
+  context. Don't reintroduce per-template `max-w-*` wrappers inside content
+  blocks — put the class on the view's context instead.
 
 ## SQLite on Fly — critical
 
@@ -81,3 +101,6 @@ must stay set. Backups are Fly's automatic volume snapshots.
 - Don't change the shape of `generate_slug()` (6-char base62) without
   considering URL collisions with already-published notes. If you shorten it,
   collisions get likelier; if you lengthen it, old URLs still work.
+- Don't change `WEBAUTHN_RP_ID` away from `notes.tomd.org`, don't derive it
+  from the request host, and don't add `notes-tomd-org.fly.dev` as an alt
+  origin — every existing passkey would stop working.
