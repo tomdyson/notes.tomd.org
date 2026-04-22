@@ -21,17 +21,27 @@ _IMG_OR_ANCHOR_RE = re.compile(
 )
 _IMG_SRC_RE = re.compile(r'''src\s*=\s*"([^"]*)"''', flags=re.IGNORECASE)
 
+_TASK_LI_RE = re.compile(
+    r'<li>(?P<lead>\s*(?:<p>\s*)?)\[(?P<state>[ xX])\]\s+',
+)
+_TASK_LINE_RE = re.compile(
+    r'^([ \t]*[-*+][ \t]+)(\[[ xX]\])(\s)',
+    flags=re.MULTILINE,
+)
+
 
 ALLOWED_TAGS = [
     "a", "abbr", "b", "blockquote", "br", "code", "div", "em", "h1", "h2", "h3",
-    "h4", "h5", "h6", "hr", "i", "img", "li", "ol", "p", "pre", "span", "strong",
-    "sub", "sup", "table", "tbody", "td", "th", "thead", "tr", "ul",
+    "h4", "h5", "h6", "hr", "i", "img", "input", "li", "ol", "p", "pre", "span",
+    "strong", "sub", "sup", "table", "tbody", "td", "th", "thead", "tr", "ul",
 ]
 
 ALLOWED_ATTRS = {
     "*": ["id", "class"],
     "a": ["href", "title", "rel"],
     "img": ["src", "alt", "title"],
+    "input": ["type", "checked", "disabled", "data-task-index"],
+    "li": ["id", "class"],
     "th": ["align", "colspan", "rowspan"],
     "td": ["align", "colspan", "rowspan"],
 }
@@ -82,6 +92,40 @@ def _wrap_images_in_expand_links(html: str) -> str:
     return "".join(out)
 
 
+def _replace_task_list_items(html: str) -> str:
+    counter = [0]
+
+    def sub(m):
+        idx = counter[0]
+        counter[0] += 1
+        checked = m.group("state").lower() == "x"
+        attrs = ' checked' if checked else ''
+        return (
+            f'<li class="task-item">{m.group("lead")}'
+            f'<input type="checkbox" disabled data-task-index="{idx}"{attrs}> '
+        )
+
+    return _TASK_LI_RE.sub(sub, html)
+
+
+def toggle_task_in_markdown(src: str, index: int):
+    """Flip the Nth task checkbox in the markdown source.
+
+    Returns the new markdown, or None if there is no task at that index.
+    Indexing matches the order in which task <li>s are rendered, which is
+    the source order of lines matching ``[-*+] [ ]`` / ``[-*+] [x]``.
+    """
+    if index < 0:
+        return None
+    matches = list(_TASK_LINE_RE.finditer(src or ""))
+    if index >= len(matches):
+        return None
+    m = matches[index]
+    bracket = m.group(2)
+    new_bracket = "[ ]" if bracket[1].lower() == "x" else "[x]"
+    return src[: m.start(2)] + new_bracket + src[m.end(2) :]
+
+
 def render_markdown(src: str) -> str:
     src = _MERMAID_FENCE_RE.sub(_replace_mermaid_fence, src or "")
     md = markdown.Markdown(
@@ -93,6 +137,7 @@ def render_markdown(src: str) -> str:
     )
     raw = md.convert(src)
     raw = _SCRIPT_STYLE_RE.sub("", raw)
+    raw = _replace_task_list_items(raw)
     clean = bleach.clean(
         raw,
         tags=ALLOWED_TAGS,

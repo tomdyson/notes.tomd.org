@@ -1,6 +1,6 @@
 from django.test import SimpleTestCase
 
-from notes.rendering import render_markdown
+from notes.rendering import render_markdown, toggle_task_in_markdown
 
 
 class RenderMarkdownTests(SimpleTestCase):
@@ -93,3 +93,118 @@ class RenderMarkdownTests(SimpleTestCase):
         html = render_markdown("[![](/i/a.webp)](https://example.com/)")
         # Only the outer link should be present; no nested <a><a>.
         self.assertEqual(html.count("<a "), 1)
+
+
+class TaskListRenderingTests(SimpleTestCase):
+    def test_unchecked_task_becomes_checkbox(self):
+        html = render_markdown("- [ ] todo\n")
+        self.assertIn('type="checkbox"', html)
+        self.assertNotIn("checked", html)
+        self.assertIn("todo", html)
+        self.assertNotIn("[ ]", html)
+
+    def test_checked_task_becomes_checked_checkbox(self):
+        html = render_markdown("- [x] done\n")
+        self.assertIn('type="checkbox"', html)
+        self.assertIn("checked", html)
+        self.assertIn("done", html)
+        self.assertNotIn("[x]", html)
+
+    def test_task_items_carry_zero_based_index(self):
+        html = render_markdown("- [ ] one\n- [x] two\n- [ ] three\n")
+        self.assertIn('data-task-index="0"', html)
+        self.assertIn('data-task-index="1"', html)
+        self.assertIn('data-task-index="2"', html)
+
+    def test_task_li_marked_with_class(self):
+        html = render_markdown("- [ ] todo\n")
+        self.assertRegex(html, r'<li class="[^"]*\btask-item\b')
+
+    def test_non_task_li_unchanged(self):
+        html = render_markdown("- alpha\n- [ ] beta\n- gamma\n")
+        # Only one task, so only one input.
+        self.assertEqual(html.count('type="checkbox"'), 1)
+        self.assertEqual(html.count('data-task-index='), 1)
+        self.assertIn("<li>alpha</li>", html)
+        self.assertIn("<li>gamma</li>", html)
+
+    def test_task_input_disabled_by_default(self):
+        # Toggling is enabled via JS for authenticated viewers; the
+        # underlying input is disabled so it's inert without JS.
+        html = render_markdown("- [ ] todo\n")
+        self.assertIn("disabled", html)
+
+    def test_inline_formatting_preserved_in_task_text(self):
+        html = render_markdown("- [ ] **bold** task\n")
+        self.assertIn("<strong>bold</strong>", html)
+
+    def test_uppercase_x_treated_as_checked(self):
+        html = render_markdown("- [X] done\n")
+        self.assertIn("checked", html)
+
+    def test_nested_task_list_indices_in_source_order(self):
+        src = "- [ ] outer\n    - [x] inner\n- [ ] last\n"
+        html = render_markdown(src)
+        self.assertIn('data-task-index="0"', html)
+        self.assertIn('data-task-index="1"', html)
+        self.assertIn('data-task-index="2"', html)
+        # outer comes before inner before last in document order
+        i0 = html.index('data-task-index="0"')
+        i1 = html.index('data-task-index="1"')
+        i2 = html.index('data-task-index="2"')
+        self.assertLess(i0, i1)
+        self.assertLess(i1, i2)
+
+    def test_loose_list_task_items_render(self):
+        # Blank lines between items make python-markdown wrap each
+        # <li> in a <p>; the checkbox should still appear.
+        src = "- [ ] one\n\n- [x] two\n"
+        html = render_markdown(src)
+        self.assertEqual(html.count('type="checkbox"'), 2)
+        self.assertEqual(html.count("checked"), 1)
+
+
+class ToggleTaskInMarkdownTests(SimpleTestCase):
+    def test_toggle_unchecked_to_checked(self):
+        self.assertEqual(toggle_task_in_markdown("- [ ] foo", 0), "- [x] foo")
+
+    def test_toggle_checked_to_unchecked(self):
+        self.assertEqual(toggle_task_in_markdown("- [x] foo", 0), "- [ ] foo")
+
+    def test_toggle_nth_task_only(self):
+        src = "- [ ] one\n- [ ] two\n- [ ] three\n"
+        self.assertEqual(
+            toggle_task_in_markdown(src, 1),
+            "- [ ] one\n- [x] two\n- [ ] three\n",
+        )
+
+    def test_skip_non_task_lines_when_indexing(self):
+        src = "- alpha\n- [ ] beta\n- gamma\n- [x] delta\n"
+        self.assertEqual(
+            toggle_task_in_markdown(src, 1),
+            "- alpha\n- [ ] beta\n- gamma\n- [ ] delta\n",
+        )
+
+    def test_indented_task_items_count(self):
+        src = "- [ ] outer\n    - [x] inner\n"
+        self.assertEqual(
+            toggle_task_in_markdown(src, 1),
+            "- [ ] outer\n    - [ ] inner\n",
+        )
+
+    def test_uppercase_x_counted_and_lowered(self):
+        self.assertEqual(toggle_task_in_markdown("- [X] foo", 0), "- [ ] foo")
+
+    def test_returns_none_for_out_of_range(self):
+        self.assertIsNone(toggle_task_in_markdown("- [ ] one", 5))
+        self.assertIsNone(toggle_task_in_markdown("no tasks here", 0))
+        self.assertIsNone(toggle_task_in_markdown("- [ ] one", -1))
+
+    def test_supports_asterisk_and_plus_bullets(self):
+        self.assertEqual(toggle_task_in_markdown("* [ ] foo", 0), "* [x] foo")
+        self.assertEqual(toggle_task_in_markdown("+ [x] foo", 0), "+ [ ] foo")
+
+    def test_does_not_match_inline_brackets(self):
+        # "[ ]" inside a paragraph (no list marker) is not a task.
+        src = "Look at [ ] this!\n"
+        self.assertIsNone(toggle_task_in_markdown(src, 0))

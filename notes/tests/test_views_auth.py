@@ -161,6 +161,67 @@ class DashboardTests(AuthBase):
         self.assertNotContains(r, "Alpha", status_code=404)
 
 
+class ToggleTaskTests(AuthBase):
+    def setUp(self):
+        self.note = Note.objects.create(
+            slug="t1", markdown="- [ ] one\n- [x] two\n"
+        )
+
+    def test_toggle_requires_login(self):
+        r = self.client.post("/t1/toggle/", {"index": "0"})
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/login/", r["Location"])
+        self.note.refresh_from_db()
+        self.assertEqual(self.note.markdown, "- [ ] one\n- [x] two\n")
+
+    def test_toggle_requires_post(self):
+        self.login()
+        r = self.client.get("/t1/toggle/")
+        self.assertEqual(r.status_code, 405)
+
+    def test_toggle_flips_unchecked_to_checked(self):
+        self.login()
+        r = self.client.post("/t1/toggle/", {"index": "0"})
+        self.assertEqual(r.status_code, 200)
+        self.note.refresh_from_db()
+        self.assertEqual(self.note.markdown, "- [x] one\n- [x] two\n")
+
+    def test_toggle_flips_checked_to_unchecked(self):
+        self.login()
+        r = self.client.post("/t1/toggle/", {"index": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.note.refresh_from_db()
+        self.assertEqual(self.note.markdown, "- [ ] one\n- [ ] two\n")
+
+    def test_toggle_re_renders_html(self):
+        self.login()
+        self.client.post("/t1/toggle/", {"index": "0"})
+        self.note.refresh_from_db()
+        self.assertEqual(self.note.html.count("checked"), 2)
+
+    def test_toggle_invalid_index_returns_400(self):
+        self.login()
+        r = self.client.post("/t1/toggle/", {"index": "abc"})
+        self.assertEqual(r.status_code, 400)
+
+    def test_toggle_missing_index_returns_400(self):
+        self.login()
+        r = self.client.post("/t1/toggle/", {})
+        self.assertEqual(r.status_code, 400)
+
+    def test_toggle_out_of_range_returns_404(self):
+        self.login()
+        r = self.client.post("/t1/toggle/", {"index": "99"})
+        self.assertEqual(r.status_code, 404)
+        self.note.refresh_from_db()
+        self.assertEqual(self.note.markdown, "- [ ] one\n- [x] two\n")
+
+    def test_toggle_unknown_slug_404(self):
+        self.login()
+        r = self.client.post("/no-such-note/toggle/", {"index": "0"})
+        self.assertEqual(r.status_code, 404)
+
+
 class PasswordOnEditorTests(AuthBase):
     def test_setting_password_on_create(self):
         self.login()

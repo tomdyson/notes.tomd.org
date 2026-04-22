@@ -7,6 +7,7 @@ from . import gate
 from .forms import NoteForm, UnlockForm
 from .images import ImageError, process_upload
 from .models import Image, Note
+from .rendering import toggle_task_in_markdown
 
 
 def home(request):
@@ -107,6 +108,23 @@ def delete_note(request, slug):
     note = get_object_or_404(Note, slug=slug)
     note.delete()
     return redirect("/")
+
+
+@login_required
+@require_POST
+def toggle_task(request, slug):
+    note = get_object_or_404(Note, slug=slug)
+    raw = request.POST.get("index")
+    try:
+        index = int(raw)
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "invalid index"}, status=400)
+    new_md = toggle_task_in_markdown(note.markdown, index)
+    if new_md is None:
+        return JsonResponse({"error": "task not found"}, status=404)
+    note.markdown = new_md
+    note.save()
+    return JsonResponse({"ok": True})
 
 
 @login_required

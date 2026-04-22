@@ -97,3 +97,12 @@ h1, h2, h3, h4, h5, h6 {
   max-width: 100%;
   height: auto;
 }
+.note-body li.task-item {
+  list-style: none;
+  margin-left: -1.25rem;
+}
+.note-body li.task-item > input[type="checkbox"] {
+  margin-right: 0.5rem;
+  vertical-align: baseline;
+  transform: translateY(1px);
+}

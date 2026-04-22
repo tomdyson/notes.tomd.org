@@ -19,5 +19,6 @@ urlpatterns = [
     path("<slug:slug>/raw", views.raw_note, name="raw"),
     path("<slug:slug>/edit/", views.edit_note, name="edit"),
     path("<slug:slug>/delete/", views.delete_note, name="delete"),
+    path("<slug:slug>/toggle/", views.toggle_task, name="toggle_task"),
     path("<slug:slug>/unlock/", views.unlock_note, name="unlock"),
 ]
