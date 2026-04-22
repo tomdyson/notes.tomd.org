@@ -5,3 +5,4 @@ markdown>=3.6
 pygments>=2.17
 bleach>=6.1
 webauthn>=2.5
+Pillow>=11

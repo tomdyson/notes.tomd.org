@@ -15,6 +15,12 @@ _MERMAID_FENCE_RE = re.compile(
     flags=re.DOTALL | re.MULTILINE,
 )
 
+_IMG_OR_ANCHOR_RE = re.compile(
+    r"<a\b[^>]*>|</a\s*>|<img\b[^>]*/?>",
+    flags=re.IGNORECASE,
+)
+_IMG_SRC_RE = re.compile(r'''src\s*=\s*"([^"]*)"''', flags=re.IGNORECASE)
+
 
 ALLOWED_TAGS = [
     "a", "abbr", "b", "blockquote", "br", "code", "div", "em", "h1", "h2", "h3",
@@ -43,6 +49,39 @@ def _replace_mermaid_fence(match):
     return f'\n<div class="mermaid">{escape(body)}</div>\n'
 
 
+def _wrap_images_in_expand_links(html: str) -> str:
+    """Wrap each <img> not already inside an <a> in a click-to-expand link."""
+    out = []
+    depth = 0
+    pos = 0
+    for m in _IMG_OR_ANCHOR_RE.finditer(html):
+        out.append(html[pos:m.start()])
+        token = m.group()
+        lower = token.lower()
+        if lower.startswith("</a"):
+            out.append(token)
+            depth = max(0, depth - 1)
+        elif lower.startswith("<a"):
+            out.append(token)
+            depth += 1
+        else:  # <img ...>
+            if depth > 0:
+                out.append(token)
+            else:
+                src_match = _IMG_SRC_RE.search(token)
+                if src_match and src_match.group(1):
+                    src = src_match.group(1)
+                    out.append(
+                        f'<a href="{src}" target="_blank" rel="noopener noreferrer">'
+                        f'{token}</a>'
+                    )
+                else:
+                    out.append(token)
+        pos = m.end()
+    out.append(html[pos:])
+    return "".join(out)
+
+
 def render_markdown(src: str) -> str:
     src = _MERMAID_FENCE_RE.sub(_replace_mermaid_fence, src or "")
     md = markdown.Markdown(
@@ -62,4 +101,5 @@ def render_markdown(src: str) -> str:
         strip=True,
     )
     linker = Linker(callbacks=[_set_link_rel], parse_email=False)
-    return linker.linkify(clean)
+    linked = linker.linkify(clean)
+    return _wrap_images_in_expand_links(linked)
