@@ -13,16 +13,16 @@
 <body class="min-h-screen">
   {% if user.is_authenticated %}
   <header class="border-b border-stone-200 bg-white/70 backdrop-blur">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-end">
-      <nav class="text-sm flex items-center gap-3">
-        <a href="{% url 'notes:new' %}" class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">New note</a>
+    <div class="{{ container_class|default:'max-w-3xl' }} mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-end">
+      <nav class="text-sm flex items-center gap-4">
+        <a href="{% url 'notes:new' %}" class="text-stone-500 hover:text-stone-800">New note</a>
         <a href="{% url 'notes:passkeys' %}" class="text-stone-500 hover:text-stone-800">Passkeys</a>
         <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button class="text-stone-500 hover:text-stone-800">Log out</button></form>
       </nav>
     </div>
   </header>
   {% endif %}
-  <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <main class="{{ container_class|default:'max-w-3xl' }} mx-auto px-4 sm:px-6 lg:px-8 py-8">
     {% block content %}{% endblock %}
   </main>
   {% block body_extra %}{% endblock %}

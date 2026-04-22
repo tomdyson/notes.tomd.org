@@ -1,7 +1,7 @@
 {% extends "notes/base.html" %}
 {% block title %}{{ note.title|default:note.slug }}{% endblock %}
 {% block content %}
-<article class="max-w-3xl mx-auto bg-white border border-stone-200 shadow-sm rounded-lg p-8 sm:p-10">
+<article class="bg-white border border-stone-200 shadow-sm rounded-lg p-8 sm:p-10">
   {% if note.title %}<h1 class="font-serif text-3xl mb-6">{{ note.title }}</h1>{% endif %}
   <div class="prose prose-stone max-w-none note-body">
     {{ note.html|safe }}

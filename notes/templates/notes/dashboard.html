@@ -1,10 +1,7 @@
 {% extends "notes/base.html" %}
 {% block content %}
-<div class="max-w-3xl mx-auto">
-  <div class="flex items-center justify-between mb-6">
-    <h1 class="font-serif text-3xl">Your notes</h1>
-    <a href="{% url 'notes:new' %}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">New note</a>
-  </div>
+<div>
+  <h1 class="font-serif text-3xl mb-6">Your notes</h1>
   {% if notes %}
     <ul class="space-y-2">
       {% for note in notes %}

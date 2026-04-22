@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}{% if note %}Edit {{ note.slug }}{% else %}New note{% endif %}{% endblock %}
 {% block content %}
-<form method="post" id="editor-form" class="max-w-6xl mx-auto">
+<form method="post" id="editor-form">
   {% csrf_token %}
   {% if form.non_field_errors %}
     <div class="rounded-md bg-red-50 border border-red-200 p-3 mb-4 text-sm text-red-800">

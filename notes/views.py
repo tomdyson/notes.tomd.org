@@ -76,7 +76,11 @@ def new_note(request):
             return redirect(f"/{note.slug}/")
     else:
         form = NoteForm()
-    return render(request, "notes/editor.html", {"form": form, "note": None})
+    return render(
+        request,
+        "notes/editor.html",
+        {"form": form, "note": None, "container_class": "max-w-6xl"},
+    )
 
 
 @login_required
@@ -89,7 +93,11 @@ def edit_note(request, slug):
             return redirect(f"/{note.slug}/")
     else:
         form = NoteForm(instance=note)
-    return render(request, "notes/editor.html", {"form": form, "note": note})
+    return render(
+        request,
+        "notes/editor.html",
+        {"form": form, "note": note, "container_class": "max-w-6xl"},
+    )
 
 
 @login_required
