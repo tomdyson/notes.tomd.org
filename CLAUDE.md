@@ -63,9 +63,19 @@ of `manage.py test` (tests auto-detect `test` in `argv`).
 - **Layout width: `container_class` template variable.** `base.html`'s header
   nav and main wrapper both render `{{ container_class|default:"max-w-3xl" }}`
   so they line up on every page. Views that need a wider shell (currently
-  only the editor, which is 2-col) pass `container_class="max-w-6xl"` in the
-  context. Don't reintroduce per-template `max-w-*` wrappers inside content
-  blocks — put the class on the view's context instead.
+  only the editor, which uses `max-w-6xl` so its markdown pane lines up with
+  the fixed footer below) pass `container_class="max-w-6xl"` in the context.
+  Don't reintroduce per-template `max-w-*` wrappers inside content blocks —
+  put the class on the view's context instead.
+- **Editor settings live in the footer, outside `<form>`.** Title, slug and
+  password render in `{% block after_main %}` — a slot defined in `base.html`
+  that sits *outside* the constrained `<main>` so a fixed, full-width footer
+  bar can span the viewport. The footer has a hidden `data-settings-panel`
+  that expands upwards on toggle. Because those inputs live outside
+  `<form id="editor-form">`, each one uses HTML5's `form="editor-form"`
+  attribute to submit with the editor form. If you add a new `NoteForm`
+  field, render it in the footer panel and include `form="editor-form"`,
+  otherwise it will be silently dropped on submit.
 
 ## SQLite on Fly — critical
 
