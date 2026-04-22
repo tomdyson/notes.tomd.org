@@ -1,0 +1,19 @@
+{% extends "notes/base.html" %}
+{% block title %}Unlock — notes.tomd.org{% endblock %}
+{% block content %}
+<div class="flex items-center justify-center p-4">
+  <div class="max-w-md w-full bg-white rounded-lg shadow-sm border border-stone-200 p-8">
+    <h1 class="font-serif text-2xl text-center mb-2">Password required</h1>
+    <p class="text-stone-500 text-center mb-6 text-sm">This note is protected.</p>
+    {% if error %}
+      <div class="rounded-md bg-red-50 border border-red-200 p-3 mb-4 text-sm text-red-800">
+        Incorrect password.
+      </div>
+    {% endif %}
+    <form method="post" class="space-y-4">{% csrf_token %}
+      <input type="password" name="password" autofocus placeholder="Password" class="block w-full rounded-md border-stone-300 shadow-sm py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border">
+      <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">Unlock</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

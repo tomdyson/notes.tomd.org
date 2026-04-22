@@ -1,0 +1,19 @@
+{% extends "notes/base.html" %}
+{% block title %}{% if note.title %}{{ note.title }} — {% endif %}notes.tomd.org{% endblock %}
+{% block content %}
+<article class="max-w-3xl mx-auto bg-white border border-stone-200 shadow-sm rounded-lg p-8 sm:p-10">
+  {% if note.title %}<h1 class="font-serif text-3xl mb-6">{{ note.title }}</h1>{% endif %}
+  <div class="prose prose-stone max-w-none note-body">
+    {{ note.html|safe }}
+  </div>
+  <footer class="mt-8 pt-4 border-t border-stone-100 text-xs text-stone-500 flex items-center justify-between">
+    <span>Updated {{ note.updated_at|date:"Y-m-d H:i" }}</span>
+    <span class="flex gap-3">
+      <a href="/{{ note.slug }}/raw" class="hover:text-stone-800">raw</a>
+      {% if user.is_authenticated %}
+        <a href="{% url 'notes:edit' note.slug %}" class="hover:text-stone-800">edit</a>
+      {% endif %}
+    </span>
+  </footer>
+</article>
+{% endblock %}
