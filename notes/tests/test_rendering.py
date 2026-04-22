@@ -23,6 +23,10 @@ class RenderMarkdownTests(SimpleTestCase):
         self.assertIn('A[&quot;Hello&quot;] --&gt; B', html)
         self.assertNotIn("codehilite", html)
 
+    def test_renders_mermaid_fence_at_end_of_document(self):
+        html = render_markdown("```mermaid\ngraph TD\n    A-->B\n```")
+        self.assertIn('<div class="mermaid">graph TD', html)
+
     def test_renders_tables(self):
         src = "| a | b |\n|---|---|\n| 1 | 2 |\n"
         html = render_markdown(src)
