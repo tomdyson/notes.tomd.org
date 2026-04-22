@@ -6,10 +6,52 @@
   if (!md || !preview || !form) return;
 
   let timer = null;
+  let mermaidReady = false;
+
+  function initMermaid() {
+    if (!window.mermaid || mermaidReady) return;
+    window.mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+    });
+    mermaidReady = true;
+  }
+
+  function enhancePreview() {
+    const mermaidBlocks = [];
+    preview.querySelectorAll("pre > code.language-mermaid").forEach(function (code) {
+      const diagram = document.createElement("div");
+      diagram.className = "mermaid";
+      diagram.textContent = code.textContent;
+      code.parentElement.replaceWith(diagram);
+      mermaidBlocks.push(diagram);
+    });
+
+    if (window.hljs) {
+      preview.querySelectorAll("pre code").forEach(function (block) {
+        if (!block.classList.contains("language-mermaid")) {
+          window.hljs.highlightElement(block);
+        }
+      });
+    }
+
+    if (window.mermaid && mermaidBlocks.length) {
+      initMermaid();
+      window.mermaid.run({ nodes: mermaidBlocks }).catch(function () {});
+    }
+  }
+
   function render() {
     const src = md.value;
+    if (!window.marked || !window.DOMPurify) {
+      const fallback = document.createElement("pre");
+      fallback.textContent = src;
+      preview.replaceChildren(fallback);
+      return;
+    }
     const html = window.marked.parse(src, { gfm: true, breaks: false });
     preview.innerHTML = window.DOMPurify.sanitize(html);
+    enhancePreview();
   }
   function schedule() {
     if (timer) clearTimeout(timer);

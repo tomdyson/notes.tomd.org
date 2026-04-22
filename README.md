@@ -10,8 +10,10 @@ Live at https://notes.tomd.org/.
 - Single-user authoring (Django superuser), public/anonymous viewing
 - Custom slugs or auto-generated 6-char base62 IDs (`notes.tomd.org/aB3kLm`)
 - Optional per-note passwords, session-scoped unlock, with IP+slug rate limiting
-- Live markdown preview in the editor (client-side `marked` + `DOMPurify`);
-  server-side `markdown` + `pygments` + `bleach` is canonical
+- Live markdown preview in the editor (client-side `marked` + `DOMPurify` +
+  Mermaid + Highlight.js); server-side `markdown` + `pygments` + `bleach` is
+  canonical
+- Mermaid diagrams from fenced `mermaid` code blocks
 - Drag or paste images into the editor — Pillow re-encodes to WebP, caps the
   longest edge at 2000px, strips EXIF, and stores on the Fly volume
 - Rendered images are wrapped in click-to-expand links

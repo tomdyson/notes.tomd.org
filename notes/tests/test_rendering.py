@@ -16,6 +16,28 @@ class RenderMarkdownTests(SimpleTestCase):
         # pygments wraps tokens in <span class="...">
         self.assertRegex(html, r'<span class=\"[^\"]+\"')
 
+    def test_renders_mermaid_fences_as_mermaid_blocks(self):
+        src = '```mermaid\ngraph TD\n    A["Hello"] --> B\n```\n\nAfter'
+        html = render_markdown(src)
+        self.assertIn('<div class="mermaid">', html)
+        self.assertIn("</div>", html)
+        self.assertIn('A[&quot;Hello&quot;] --&gt; B', html)
+        self.assertIn("<p>After</p>", html)
+        self.assertNotIn("codehilite", html)
+
+    def test_renders_mermaid_fence_at_end_of_document(self):
+        html = render_markdown("```mermaid\ngraph TD\n    A-->B\n```")
+        self.assertIn('<div class="mermaid">graph TD', html)
+
+    def test_renders_mermaid_fence_with_crlf_line_endings(self):
+        # Browsers submit <textarea> content with CRLF; the mermaid
+        # detector must treat CRLF and LF identically or every diagram
+        # authored through the editor silently falls through to pygments.
+        src = "```mermaid\r\ngraph TD\r\n    A-->B\r\n```\r\n"
+        html = render_markdown(src)
+        self.assertIn('<div class="mermaid">', html)
+        self.assertNotIn("codehilite", html)
+
     def test_renders_tables(self):
         src = "| a | b |\n|---|---|\n| 1 | 2 |\n"
         html = render_markdown(src)

@@ -1,4 +1,5 @@
 import re
+from html import escape
 
 import bleach
 import markdown
@@ -8,6 +9,10 @@ from bleach.linkifier import Linker
 _SCRIPT_STYLE_RE = re.compile(
     r"<(script|style)\b[^>]*>.*?</\1\s*>",
     flags=re.DOTALL | re.IGNORECASE,
+)
+_MERMAID_FENCE_RE = re.compile(
+    r"^```mermaid[^\n]*\r?\n(?P<body>.*?)(?:\r?\n```[ \t]*(?:\r?\n|$))",
+    flags=re.DOTALL | re.MULTILINE,
 )
 
 _IMG_OR_ANCHOR_RE = re.compile(
@@ -37,6 +42,11 @@ ALLOWED_PROTOCOLS = ["http", "https", "mailto"]
 def _set_link_rel(attrs, new=False):
     attrs[(None, "rel")] = "nofollow noopener"
     return attrs
+
+
+def _replace_mermaid_fence(match):
+    body = match.group("body").rstrip()
+    return f'\n<div class="mermaid">{escape(body)}</div>\n'
 
 
 def _wrap_images_in_expand_links(html: str) -> str:
@@ -73,6 +83,7 @@ def _wrap_images_in_expand_links(html: str) -> str:
 
 
 def render_markdown(src: str) -> str:
+    src = _MERMAID_FENCE_RE.sub(_replace_mermaid_fence, src or "")
     md = markdown.Markdown(
         extensions=["fenced_code", "codehilite", "tables", "toc", "sane_lists"],
         extension_configs={
@@ -80,7 +91,7 @@ def render_markdown(src: str) -> str:
         },
         output_format="html",
     )
-    raw = md.convert(src or "")
+    raw = md.convert(src)
     raw = _SCRIPT_STYLE_RE.sub("", raw)
     clean = bleach.clean(
         raw,

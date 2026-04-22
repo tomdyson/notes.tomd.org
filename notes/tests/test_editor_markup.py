@@ -17,8 +17,10 @@ class EditorMarkupTests(TestCase):
         self.assertContains(r, 'id="id_markdown"')
         self.assertContains(r, 'id="preview"')
 
-    def test_editor_loads_marked_dompurify_and_editor_js(self):
+    def test_editor_loads_marked_dompurify_mermaid_highlight_and_editor_js(self):
         r = self.client.get("/new/")
         self.assertContains(r, "marked")
         self.assertContains(r, "dompurify")
+        self.assertContains(r, "mermaid")
+        self.assertContains(r, "highlight.js")
         self.assertContains(r, "editor.js")
