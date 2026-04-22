@@ -208,6 +208,18 @@
   md.addEventListener("dragleave", function () {
     md.classList.remove("ring-2", "ring-indigo-400");
   });
+  function caretOffsetFromPoint(textarea, x, y) {
+    if (document.caretPositionFromPoint) {
+      const p = document.caretPositionFromPoint(x, y);
+      if (p && p.offsetNode === textarea) return p.offset;
+    }
+    if (document.caretRangeFromPoint) {
+      const r = document.caretRangeFromPoint(x, y);
+      if (r && textarea.contains(r.startContainer)) return r.startOffset;
+    }
+    return null;
+  }
+
   md.addEventListener("drop", function (e) {
     md.classList.remove("ring-2", "ring-indigo-400");
     const dt = e.dataTransfer;
@@ -227,6 +239,11 @@
     }
     if (!files.length) return;
     e.preventDefault();
+    const offset = caretOffsetFromPoint(md, e.clientX, e.clientY);
+    if (offset != null) {
+      md.focus();
+      md.selectionStart = md.selectionEnd = offset;
+    }
     files.forEach(uploadImageFile);
   });
 
