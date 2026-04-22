@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.hashers import check_password as _check_password
 from django.contrib.auth.hashers import make_password
 from django.db import IntegrityError, models, transaction
@@ -53,3 +54,21 @@ class Note(models.Model):
             except IntegrityError:
                 continue
         raise IntegrityError("could not allocate a unique slug after 8 tries")
+
+
+class Passkey(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="passkeys"
+    )
+    credential_id = models.BinaryField(unique=True)
+    public_key = models.BinaryField()
+    sign_count = models.PositiveIntegerField(default=0)
+    name = models.CharField(max_length=80, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return self.name or f"passkey-{self.pk}"

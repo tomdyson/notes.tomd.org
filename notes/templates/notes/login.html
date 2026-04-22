@@ -1,4 +1,5 @@
 {% extends "notes/base.html" %}
+{% load static %}
 {% block title %}Log in — notes.tomd.org{% endblock %}
 {% block content %}
 <div class="flex items-center justify-center p-4">
@@ -9,6 +10,14 @@
         Username or password is incorrect.
       </div>
     {% endif %}
+    <button id="pk-login" type="button" class="w-full inline-flex items-center justify-center px-4 py-2 border border-stone-300 text-sm font-medium rounded-md bg-white text-stone-700 hover:bg-stone-50 mb-4">
+      Log in with passkey
+    </button>
+    <p id="pk-login-status" class="text-xs text-stone-500 text-center mb-4 min-h-[1em]"></p>
+    <div class="relative my-4">
+      <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-stone-200"></div></div>
+      <div class="relative flex justify-center text-xs"><span class="bg-white px-2 text-stone-400">or</span></div>
+    </div>
     <form method="post" class="space-y-4">{% csrf_token %}
       <div>
         <label class="block text-sm font-medium text-stone-700 mb-1" for="id_username">Username</label>
@@ -22,4 +31,7 @@
     </form>
   </div>
 </div>
+{% endblock %}
+{% block body_extra %}
+<script src="{% static 'notes/passkeys.js' %}"></script>
 {% endblock %}
