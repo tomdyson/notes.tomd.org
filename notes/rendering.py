@@ -11,7 +11,7 @@ _SCRIPT_STYLE_RE = re.compile(
     flags=re.DOTALL | re.IGNORECASE,
 )
 _MERMAID_FENCE_RE = re.compile(
-    r"^```mermaid[^\n]*\n(?P<body>.*?)(?:\n```[ \t]*(?:\n|$))",
+    r"^```mermaid[^\n]*\r?\n(?P<body>.*?)(?:\r?\n```[ \t]*(?:\r?\n|$))",
     flags=re.DOTALL | re.MULTILINE,
 )
 
