@@ -5,13 +5,9 @@ from notes.models import Note
 
 
 class HomeTests(TestCase):
-    def test_home_anonymous_returns_200(self):
+    def test_home_anonymous_returns_404(self):
         r = self.client.get("/")
-        self.assertEqual(r.status_code, 200)
-
-    def test_home_has_login_link_for_anonymous(self):
-        r = self.client.get("/")
-        self.assertContains(r, "/login/")
+        self.assertEqual(r.status_code, 404)
 
 
 class ViewNoteTests(TestCase):

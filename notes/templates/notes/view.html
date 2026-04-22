@@ -1,5 +1,5 @@
 {% extends "notes/base.html" %}
-{% block title %}{% if note.title %}{{ note.title }} — {% endif %}notes.tomd.org{% endblock %}
+{% block title %}{{ note.title|default:note.slug }}{% endblock %}
 {% block content %}
 <article class="max-w-3xl mx-auto bg-white border border-stone-200 shadow-sm rounded-lg p-8 sm:p-10">
   {% if note.title %}<h1 class="font-serif text-3xl mb-6">{{ note.title }}</h1>{% endif %}

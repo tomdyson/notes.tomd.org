@@ -1,5 +1,5 @@
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -15,7 +15,7 @@ def home(request):
             "notes/dashboard.html",
             {"notes": Note.objects.all()},
         )
-    return render(request, "notes/home.html")
+    raise Http404
 
 
 def _gate(request, note, next_url):
