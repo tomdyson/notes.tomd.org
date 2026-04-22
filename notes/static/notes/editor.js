@@ -74,6 +74,120 @@
     });
   }
 
+  // --- Image upload (paste / drop) ---
+  function getCsrfToken() {
+    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    if (m) return decodeURIComponent(m[1]);
+    const input = form.querySelector("input[name=csrfmiddlewaretoken]");
+    return input ? input.value : "";
+  }
+
+  function insertAtCaret(textarea, text) {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const before = textarea.value.substring(0, start);
+    const after = textarea.value.substring(end);
+    textarea.value = before + text + after;
+    const newPos = start + text.length;
+    textarea.selectionStart = textarea.selectionEnd = newPos;
+    textarea.dispatchEvent(new Event("input"));
+    return { start, end: newPos };
+  }
+
+  function replaceRange(textarea, start, end, text) {
+    textarea.value =
+      textarea.value.substring(0, start) + text + textarea.value.substring(end);
+    textarea.dispatchEvent(new Event("input"));
+  }
+
+  let uploadCounter = 0;
+  async function uploadImageFile(file) {
+    const token = "up" + (++uploadCounter);
+    const placeholder = `![uploading ${file.name || "image"}… ${token}]()`;
+    const ins = insertAtCaret(md, placeholder);
+
+    const fd = new FormData();
+    fd.append("file", file);
+    let replacement;
+    try {
+      const resp = await fetch("/upload/", {
+        method: "POST",
+        headers: { "X-CSRFToken": getCsrfToken() },
+        body: fd,
+        credentials: "same-origin",
+      });
+      if (!resp.ok) {
+        let msg = resp.statusText;
+        try {
+          const body = await resp.json();
+          if (body && body.error) msg = body.error;
+        } catch (_) {}
+        replacement = `*(upload failed: ${msg})*`;
+      } else {
+        const body = await resp.json();
+        replacement = body.markdown;
+      }
+    } catch (e) {
+      replacement = `*(upload failed: ${e.message || e})*`;
+    }
+
+    // Re-find the placeholder (user may have typed since) and swap it.
+    const idx = md.value.indexOf(placeholder);
+    if (idx === -1) return;
+    replaceRange(md, idx, idx + placeholder.length, replacement);
+  }
+
+  function extractImageFiles(items) {
+    const files = [];
+    for (const item of items) {
+      if (item.kind === "file" && item.type && item.type.startsWith("image/")) {
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    return files;
+  }
+
+  md.addEventListener("paste", function (e) {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    const files = extractImageFiles(items);
+    if (!files.length) return;
+    e.preventDefault();
+    files.forEach(uploadImageFile);
+  });
+
+  md.addEventListener("dragover", function (e) {
+    if (e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files")) {
+      e.preventDefault();
+      md.classList.add("ring-2", "ring-indigo-400");
+    }
+  });
+  md.addEventListener("dragleave", function () {
+    md.classList.remove("ring-2", "ring-indigo-400");
+  });
+  md.addEventListener("drop", function (e) {
+    md.classList.remove("ring-2", "ring-indigo-400");
+    const dt = e.dataTransfer;
+    if (!dt) return;
+    const files = [];
+    if (dt.items && dt.items.length) {
+      for (const item of dt.items) {
+        if (item.kind === "file" && item.type && item.type.startsWith("image/")) {
+          const f = item.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+    } else if (dt.files && dt.files.length) {
+      for (const f of dt.files) {
+        if (f.type && f.type.startsWith("image/")) files.push(f);
+      }
+    }
+    if (!files.length) return;
+    e.preventDefault();
+    files.forEach(uploadImageFile);
+  });
+
   // Write / Preview pane toggle.
   const paneToggle = document.querySelector("[data-pane-toggle]");
   if (paneToggle) {

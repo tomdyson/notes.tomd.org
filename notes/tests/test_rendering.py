@@ -54,3 +54,20 @@ class RenderMarkdownTests(SimpleTestCase):
     def test_strips_onerror_on_images(self):
         html = render_markdown('<img src=x onerror="alert(1)">')
         self.assertNotIn("onerror", html)
+
+    def test_images_are_wrapped_in_expand_links(self):
+        html = render_markdown("![alt](https://example.com/x.png)")
+        self.assertRegex(
+            html,
+            r'<a [^>]*href="https://example.com/x\.png"[^>]*target="_blank"[^>]*>\s*<img',
+        )
+
+    def test_image_expand_link_has_noopener(self):
+        html = render_markdown("![](/i/abc123.webp)")
+        self.assertIn('target="_blank"', html)
+        self.assertIn("noopener", html)
+
+    def test_image_already_inside_link_is_not_rewrapped(self):
+        html = render_markdown("[![](/i/a.webp)](https://example.com/)")
+        # Only the outer link should be present; no nested <a><a>.
+        self.assertEqual(html.count("<a "), 1)

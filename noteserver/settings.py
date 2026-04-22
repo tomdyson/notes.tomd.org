@@ -74,7 +74,7 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": os.environ.get("DB_PATH", str(BASE_DIR / "db.sqlite3")),
-    }
+    },
 }
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -91,6 +91,15 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+_DB_PATH = os.environ.get("DB_PATH", str(BASE_DIR / "db.sqlite3"))
+MEDIA_ROOT = os.environ.get("MEDIA_ROOT", os.path.join(os.path.dirname(_DB_PATH), "media"))
+MEDIA_URL = "/i-media/"
+
+IMAGE_MAX_UPLOAD_BYTES = int(os.environ.get("IMAGE_MAX_UPLOAD_BYTES", 10 * 1024 * 1024))
+IMAGE_MAX_DIMENSION = int(os.environ.get("IMAGE_MAX_DIMENSION", 2000))
+IMAGE_WEBP_QUALITY = int(os.environ.get("IMAGE_WEBP_QUALITY", 85))
+
 if DEBUG or _IS_TEST:
     STORAGES = {
         "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},

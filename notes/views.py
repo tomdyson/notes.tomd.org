@@ -1,11 +1,12 @@
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from . import gate
 from .forms import NoteForm, UnlockForm
-from .models import Note
+from .images import ImageError, process_upload
+from .models import Image, Note
 
 
 def home(request):
@@ -106,3 +107,29 @@ def delete_note(request, slug):
     note = get_object_or_404(Note, slug=slug)
     note.delete()
     return redirect("/")
+
+
+@login_required
+@require_POST
+def upload_image(request):
+    upload = request.FILES.get("file")
+    if not upload:
+        return JsonResponse({"error": "No file provided."}, status=400)
+    try:
+        image = process_upload(upload)
+    except ImageError as e:
+        return JsonResponse({"error": str(e)}, status=400)
+    url = f"/i/{image.short_id}.webp"
+    alt = image.original_name.rsplit(".", 1)[0] if image.original_name else ""
+    return JsonResponse({"url": url, "markdown": f"![{alt}]({url})"})
+
+
+def serve_image(request, short_id):
+    image = get_object_or_404(Image, short_id=short_id)
+    try:
+        fh = image.file.open("rb")
+    except FileNotFoundError:
+        raise Http404
+    resp = FileResponse(fh, content_type="image/webp")
+    resp["Cache-Control"] = "public, max-age=31536000, immutable"
+    return resp
