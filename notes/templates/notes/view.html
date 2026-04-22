@@ -17,3 +17,13 @@
   </footer>
 </article>
 {% endblock %}
+{% block body_extra %}
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    if (!document.querySelector(".mermaid") || !window.mermaid) return;
+    window.mermaid.initialize({startOnLoad: false, securityLevel: "strict"});
+    window.mermaid.run({querySelector: ".mermaid"}).catch(function () {});
+  });
+</script>
+{% endblock %}

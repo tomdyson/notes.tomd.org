@@ -16,6 +16,13 @@ class RenderMarkdownTests(SimpleTestCase):
         # pygments wraps tokens in <span class="...">
         self.assertRegex(html, r'<span class=\"[^\"]+\"')
 
+    def test_renders_mermaid_fences_as_mermaid_blocks(self):
+        src = '```mermaid\ngraph TD\n    A["Hello"] --> B\n```'
+        html = render_markdown(src)
+        self.assertIn('<div class="mermaid">', html)
+        self.assertIn('A[&quot;Hello&quot;] --&gt; B', html)
+        self.assertNotIn("codehilite", html)
+
     def test_renders_tables(self):
         src = "| a | b |\n|---|---|\n| 1 | 2 |\n"
         html = render_markdown(src)
