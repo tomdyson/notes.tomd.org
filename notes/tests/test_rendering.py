@@ -17,10 +17,12 @@ class RenderMarkdownTests(SimpleTestCase):
         self.assertRegex(html, r'<span class=\"[^\"]+\"')
 
     def test_renders_mermaid_fences_as_mermaid_blocks(self):
-        src = '```mermaid\ngraph TD\n    A["Hello"] --> B\n```'
+        src = '```mermaid\ngraph TD\n    A["Hello"] --> B\n```\n\nAfter'
         html = render_markdown(src)
         self.assertIn('<div class="mermaid">', html)
+        self.assertIn("</div>", html)
         self.assertIn('A[&quot;Hello&quot;] --&gt; B', html)
+        self.assertIn("<p>After</p>", html)
         self.assertNotIn("codehilite", html)
 
     def test_renders_mermaid_fence_at_end_of_document(self):
