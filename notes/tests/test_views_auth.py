@@ -154,11 +154,11 @@ class DashboardTests(AuthBase):
         self.assertContains(r, "Alpha")
         self.assertContains(r, "Beta")
 
-    def test_home_anonymous_404s_and_does_not_leak_notes(self):
+    def test_home_anonymous_does_not_leak_notes(self):
         Note.objects.create(slug="a", title="Alpha", markdown="x")
         r = self.client.get("/")
-        self.assertEqual(r.status_code, 404)
-        self.assertNotContains(r, "Alpha", status_code=404)
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, "Alpha")
 
 
 class ToggleTaskTests(AuthBase):

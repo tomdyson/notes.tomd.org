@@ -17,7 +17,7 @@ def home(request):
             "notes/dashboard.html",
             {"notes": Note.objects.all()},
         )
-    raise Http404
+    return render(request, "notes/home_public.html", {"show_public_header": True})
 
 
 def _gate(request, note, next_url):

@@ -7,9 +7,10 @@ User = get_user_model()
 
 
 class AnonymousHeaderTests(TestCase):
-    def test_anonymous_home_returns_404(self):
+    def test_anonymous_home_has_header_with_login_link(self):
         r = self.client.get("/")
-        self.assertEqual(r.status_code, 404)
+        self.assertContains(r, "<header")
+        self.assertContains(r, 'href="/login/"')
 
     def test_anonymous_view_note_has_no_header(self):
         Note.objects.create(slug="hi", markdown="# body")

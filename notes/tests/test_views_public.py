@@ -5,9 +5,12 @@ from notes.models import Note
 
 
 class HomeTests(TestCase):
-    def test_home_anonymous_returns_404(self):
+    def test_home_anonymous_renders_public_page(self):
         r = self.client.get("/")
-        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "<header")
+        self.assertContains(r, 'href="/login/"')
+        self.assertContains(r, "Private notes live here.")
 
 
 class ViewNoteTests(TestCase):
