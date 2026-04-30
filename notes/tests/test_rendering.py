@@ -49,6 +49,20 @@ class RenderMarkdownTests(SimpleTestCase):
         self.assertIn("<ul>", html)
         self.assertIn("<li>one</li>", html)
 
+    def test_paragraph_can_be_followed_immediately_by_list(self):
+        html = render_markdown("sentence\n - first list item\n - second item\n")
+        self.assertIn("<p>sentence</p>", html)
+        self.assertIn("<ul>", html)
+        self.assertIn("<li>first list item</li>", html)
+        self.assertIn("<li>second item</li>", html)
+
+    def test_list_interruptions_inside_fences_are_unchanged(self):
+        src = "```text\nsentence\n - not a rendered list\n```\n"
+        html = render_markdown(src)
+        self.assertIn("sentence", html)
+        self.assertIn("- not a rendered list", html)
+        self.assertNotIn("<li>not a rendered list</li>", html)
+
     def test_strips_script_tags(self):
         html = render_markdown("hi <script>alert(1)</script> bye")
         self.assertNotIn("<script", html)

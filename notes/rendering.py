@@ -28,6 +28,8 @@ _TASK_LINE_RE = re.compile(
     r'^([ \t]*[-*+][ \t]+)(\[[ xX]\])(\s)',
     flags=re.MULTILINE,
 )
+_FENCE_LINE_RE = re.compile(r"^[ ]{0,3}(`{3,}|~{3,})")
+_LIST_INTERRUPT_RE = re.compile(r"^[ ]{0,3}[-*+][ \t]+")
 
 
 ALLOWED_TAGS = [
@@ -108,6 +110,41 @@ def _replace_task_list_items(html: str) -> str:
     return _TASK_LI_RE.sub(sub, html)
 
 
+def _allow_marked_list_interruptions(src: str) -> str:
+    """Let server rendering match Marked when a paragraph is followed by a list."""
+    out = []
+    previous = ""
+    fence = None
+
+    for line in src.splitlines(keepends=True):
+        stripped_line = line.rstrip("\r\n")
+        fence_match = _FENCE_LINE_RE.match(stripped_line)
+
+        if fence:
+            out.append(line)
+            if fence_match:
+                marker = fence_match.group(1)
+                if marker[0] == fence[0] and len(marker) >= fence[1]:
+                    fence = None
+            previous = stripped_line
+            continue
+
+        if fence_match:
+            marker = fence_match.group(1)
+            fence = (marker[0], len(marker))
+        elif (
+            previous.strip()
+            and not _LIST_INTERRUPT_RE.match(previous)
+            and _LIST_INTERRUPT_RE.match(stripped_line)
+        ):
+            out.append("\r\n" if line.endswith("\r\n") else "\n")
+
+        out.append(line)
+        previous = stripped_line
+
+    return "".join(out)
+
+
 def toggle_task_in_markdown(src: str, index: int):
     """Flip the Nth task checkbox in the markdown source.
 
@@ -128,6 +165,7 @@ def toggle_task_in_markdown(src: str, index: int):
 
 def render_markdown(src: str) -> str:
     src = _MERMAID_FENCE_RE.sub(_replace_mermaid_fence, src or "")
+    src = _allow_marked_list_interruptions(src)
     md = markdown.Markdown(
         extensions=["fenced_code", "codehilite", "tables", "toc", "sane_lists"],
         extension_configs={
