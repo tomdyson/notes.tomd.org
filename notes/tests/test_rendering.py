@@ -63,6 +63,49 @@ class RenderMarkdownTests(SimpleTestCase):
         self.assertIn("- not a rendered list", html)
         self.assertNotIn("<li>not a rendered list</li>", html)
 
+    def test_two_space_indent_nests_sublist(self):
+        # Matches marked (CommonMark): two spaces is enough to nest under "- ".
+        src = (
+            "- Q4 finished at 11% net profit\n"
+            "  - Strong finish by Mandy and teams\n"
+            "  - Project closures timed well\n"
+        )
+        html = render_markdown(src)
+        # The two indented items live in a nested <ul> inside the first <li>,
+        # not as siblings of it.
+        first_li = html.split("<li>Q4 finished at 11% net profit", 1)[1]
+        first_li = first_li.split("</li>", 1)[0]
+        self.assertIn("<ul>", first_li)
+        self.assertIn("<li>Strong finish by Mandy and teams</li>", html)
+
+    def test_two_space_indent_nests_deeply(self):
+        src = "- a\n  - b\n    - c\n"
+        html = render_markdown(src)
+        # Three nesting levels => three opening <ul> tags.
+        self.assertEqual(html.count("<ul>"), 3)
+
+    def test_nested_list_stays_tight(self):
+        # A simple nested list must not be rendered "loose" (each <li> wrapped
+        # in <p>) — that only happens when spurious blank lines leak in, and it
+        # adds unwanted vertical space around the sub-items.
+        src = (
+            "- Q4 finished at 11%\n"
+            "  - Strong finish\n"
+            "  - Project closures\n"
+            "- Full year performance\n"
+            "  - Sales below budget\n"
+        )
+        html = render_markdown(src)
+        self.assertNotIn("<p>", html)
+
+    def test_nested_list_survives_crlf(self):
+        # Browsers submit <textarea> contents with CRLF; nesting must still work.
+        src = "- a\r\n  - b\r\n  - c\r\n- d\r\n"
+        html = render_markdown(src)
+        first_li = html.split("<li>a", 1)[1].split("</li>", 1)[0]
+        self.assertIn("<ul>", first_li)
+        self.assertNotIn("<p>", html)
+
     def test_strips_script_tags(self):
         html = render_markdown("hi <script>alert(1)</script> bye")
         self.assertNotIn("<script", html)

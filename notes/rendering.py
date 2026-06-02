@@ -30,6 +30,10 @@ _TASK_LINE_RE = re.compile(
 )
 _FENCE_LINE_RE = re.compile(r"^[ ]{0,3}(`{3,}|~{3,})")
 _LIST_INTERRUPT_RE = re.compile(r"^[ ]{0,3}[-*+][ \t]+")
+_LIST_ITEM_RE = re.compile(
+    r"^(?P<indent> *)(?P<marker>[-*+]|\d{1,9}[.)])(?P<after> +)(?P<rest>.*)$"
+)
+_THEMATIC_BREAK_RE = re.compile(r"^ {0,3}([-*_])( *\1){2,} *$")
 
 
 ALLOWED_TAGS = [
@@ -110,6 +114,11 @@ def _replace_task_list_items(html: str) -> str:
     return _TASK_LI_RE.sub(sub, html)
 
 
+def _is_list_item(line: str) -> bool:
+    """True for a list-marker line at any indentation (ordered or unordered)."""
+    return bool(_LIST_ITEM_RE.match(line)) and not _THEMATIC_BREAK_RE.match(line)
+
+
 def _allow_marked_list_interruptions(src: str) -> str:
     """Let server rendering match Marked when a paragraph is followed by a list."""
     out = []
@@ -134,13 +143,104 @@ def _allow_marked_list_interruptions(src: str) -> str:
             fence = (marker[0], len(marker))
         elif (
             previous.strip()
-            and not _LIST_INTERRUPT_RE.match(previous)
+            and not _is_list_item(previous)
             and _LIST_INTERRUPT_RE.match(stripped_line)
         ):
             out.append("\r\n" if line.endswith("\r\n") else "\n")
 
         out.append(line)
         previous = stripped_line
+
+    return "".join(out)
+
+
+def _normalize_list_indentation(src: str) -> str:
+    """Re-indent nested list items so Python-Markdown nests like marked.
+
+    marked (the live preview) follows CommonMark: a sub-item nests whenever it
+    is indented past its parent's *content* column — two spaces (the width of
+    "- ") is enough, and indenting further than that does not add extra levels.
+    Python-Markdown instead nests on a fixed ``tab_length`` of four, so the same
+    source rendered flat in the published HTML and diverged from the preview.
+
+    This pass walks the source, computes each list item's nesting depth using
+    marked's relative-indentation rule, and re-emits markers at ``depth * 4``
+    spaces — the indentation Python-Markdown expects — so both renderers agree.
+    Continuation lines (wrapped text, extra paragraphs inside an item) are
+    shifted by the same amount as the item they belong to. Content inside fenced
+    code blocks is left untouched.
+
+    Known limits (all rare in practice): fenced blocks *inside* a list item and
+    unindented lazy text between list items are passed through unchanged.
+    """
+    levels = []  # stack of {"src_marker", "src_content", "norm_content"}, deep last
+    fence = None
+    out = []
+
+    for line in src.splitlines(keepends=True):
+        content = line.rstrip("\r\n")
+        nl = line[len(content):]
+        fence_match = _FENCE_LINE_RE.match(content)
+
+        if fence is not None:
+            out.append(line)
+            if fence_match:
+                marker = fence_match.group(1)
+                if marker[0] == fence[0] and len(marker) >= fence[1]:
+                    fence = None
+            continue
+        if fence_match:
+            marker = fence_match.group(1)
+            fence = (marker[0], len(marker))
+            out.append(line)
+            continue
+
+        if not content.strip():
+            # Blank line: keep any open list open; the next line decides.
+            out.append(line)
+            continue
+
+        item = _LIST_ITEM_RE.match(content)
+        if item and not _THEMATIC_BREAK_RE.match(content):
+            ind = len(item.group("indent"))
+            marker = item.group("marker")
+            rest = item.group("rest")
+            while levels and ind < levels[-1]["src_marker"]:
+                levels.pop()
+            if levels and ind >= levels[-1]["src_content"]:
+                depth = len(levels)  # child: one level deeper
+                levels.append({"src_marker": ind})
+            elif levels and levels[-1]["src_marker"] <= ind:
+                depth = len(levels) - 1  # sibling of current level
+                levels[-1]["src_marker"] = ind
+            else:
+                levels = [{"src_marker": ind}]
+                depth = 0
+            new_indent = depth * 4
+            top = levels[-1]
+            top["src_content"] = ind + len(marker) + len(item.group("after"))
+            # Python-Markdown's content column for a list item at depth d is
+            # (d + 1) * tab_length, regardless of marker width — continuations
+            # must reach it to stay inside the item.
+            top["norm_content"] = (depth + 1) * 4
+            out.append(f"{' ' * new_indent}{marker} {rest}{nl}")
+            continue
+
+        # Continuation line (not a list item): attach it to the deepest open
+        # item whose content column it reaches, shifting it by the same delta.
+        ind = len(content) - len(content.lstrip(" "))
+        target = -1
+        for i, lvl in enumerate(levels):
+            if ind >= lvl["src_content"]:
+                target = i
+        if target >= 0:
+            del levels[target + 1:]
+            lvl = levels[target]
+            norm_ind = lvl["norm_content"] + (ind - lvl["src_content"])
+            out.append(f"{' ' * norm_ind}{content.lstrip(' ')}{nl}")
+        else:
+            levels = []
+            out.append(line)
 
     return "".join(out)
 
@@ -166,6 +266,7 @@ def toggle_task_in_markdown(src: str, index: int):
 def render_markdown(src: str) -> str:
     src = _MERMAID_FENCE_RE.sub(_replace_mermaid_fence, src or "")
     src = _allow_marked_list_interruptions(src)
+    src = _normalize_list_indentation(src)
     md = markdown.Markdown(
         extensions=["fenced_code", "codehilite", "tables", "toc", "sane_lists"],
         extension_configs={

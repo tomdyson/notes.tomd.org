@@ -38,6 +38,14 @@ h1, h2, h3, h4, h5, h6 {
 }
 .note-body ul { list-style: disc; padding-left: 1.5rem; }
 .note-body ol { list-style: decimal; padding-left: 1.5rem; }
+/* Nested lists must hug their parent item — the 0.75em block margin above is
+   meant for top-level lists only; on a sub-list it adds a gap before the first
+   sub-item and after the last. */
+.note-body li > ul,
+.note-body li > ol {
+  margin-top: 0;
+  margin-bottom: 0;
+}
 .note-body a { color: #4338ca; text-decoration: underline; }
 .note-body a:hover { color: #3730a3; }
 .note-body code {
