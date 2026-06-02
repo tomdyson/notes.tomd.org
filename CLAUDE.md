@@ -6,19 +6,27 @@ Guidance for Claude working in this repo. Read before making changes.
 
 A single-user, self-hosted, gist-like Django app that serves markdown notes at
 `notes.tomd.org`. One Django project (`noteserver`), one app (`notes`), SQLite
-on a Fly volume, CI auto-deploys on push to `main`.
+on a persistent volume, deployed on Coolify (`admin.co.tomd.org`) which
+auto-deploys on push to `main` via its GitHub App. (It used to run on Fly;
+`fly.toml` and some `fly`-named skills/scripts are now vestigial — see
+Deployment below.)
 
 ## Commands
 
-- Run tests: `python manage.py test notes` (113 tests, ~9s)
+- Run tests: `python manage.py test notes` (195 tests, ~15s)
 - Run a single test: `python manage.py test notes.tests.test_rendering.RenderMarkdownTests.test_strips_script_tags`
 - Dev server: `DEBUG=1 python manage.py runserver`
 - Migrations (local): `DEBUG=1 python manage.py migrate`
-- Deploy manually: `fly deploy -a notes-tomd-org`
-- Tail prod logs: `fly logs -a notes-tomd-org`
+- Deploy: push to `main` (Coolify's GitHub App builds + deploys). Manual deploy
+  via the Coolify UI, or the `coolify` CLI / skill.
+- Tail prod logs: `coolify app logs xok61kj0vasx16hv3xkv9qj9 -n 200` (the
+  `coolify` skill covers the CLI; that UUID is the `notes-tomd-org` app).
+- Run a management command in prod: the Coolify API can't exec ad-hoc commands,
+  so SSH the host and `docker exec` (see Deployment).
 
 `DEBUG=1` is needed for any management command that touches settings outside
-of `manage.py test` (tests auto-detect `test` in `argv`).
+of `manage.py test` (tests auto-detect `test` in `argv`). Not needed in the
+prod container — it already has production settings in its environment.
 
 ## Working style
 
@@ -26,8 +34,9 @@ of `manage.py test` (tests auto-detect `test` in `argv`).
   `notes/tests/test_*.py`, one file per concern: `test_slugs`, `test_rendering`,
   `test_models`, `test_views_public`, `test_views_auth`, `test_password_gate`,
   `test_editor_markup`, `test_ui_reorg`, `test_passkey_model`,
-  `test_passkey_register`, `test_passkey_login`. Django's built-in
-  `TestCase` — not pytest.
+  `test_passkey_register`, `test_passkey_login`, `test_images_model`,
+  `test_image_pipeline`, `test_image_rejection`, `test_image_gc`,
+  `test_upload`. Django's built-in `TestCase` — not pytest.
 - Don't add new abstractions without a test that motivates them.
 
 ## Architecture gotchas
@@ -44,6 +53,13 @@ of `manage.py test` (tests auto-detect `test` in `argv`).
   is `marked` + `DOMPurify` (client-side), but the stored `html` field is
   what readers see. Always sanitise through `notes/rendering.py`; don't add
   new tag/attr allowances without thinking about XSS.
+- **Mermaid fences are pre-processed before markdown.** `render_markdown`
+  rewrites ```` ```mermaid ```` blocks into `<div class="mermaid">…</div>`
+  *before* handing the source to `markdown` so pygments never sees them.
+  The regex must tolerate CRLF (`\r?\n`) — browsers submit `<textarea>`
+  contents with CRLF, so a LF-only match silently falls through to
+  syntax-highlighted code and every diagram authored through the UI breaks.
+  When adding tests, include at least one CRLF fixture.
 - **Static files in prod use `CompressedManifestStaticFilesStorage`.** This
   requires `collectstatic` to run at Docker build time in non-DEBUG mode so
   the manifest exists. See `Dockerfile` — that's why the RUN line is
@@ -77,31 +93,56 @@ of `manage.py test` (tests auto-detect `test` in `argv`).
   field, render it in the footer panel and include `form="editor-form"`,
   otherwise it will be silently dropped on submit.
 
-## SQLite on Fly — critical
+## SQLite on a volume — critical
 
-Migrations run inside the app container via `entrypoint.sh`, **not** as a
-Fly `release_command`. Release machines don't mount the volume, so a release-
-command migration would execute against an empty ephemeral file and silently
-succeed while doing nothing. If you ever see someone propose moving migrations
-to `release_command`, stop them.
+Migrations run inside the app container at startup via `entrypoint.sh`
+(`migrate --noinput`), **not** as a separate build/release step. The persistent
+data volume is only mounted in the running app container — any migration step
+that runs outside it (a build-time `RUN`, a Fly-style `release_command`, a
+detached one-off without the volume) would execute against an empty ephemeral
+file and silently succeed while doing nothing. Keep migrations in
+`entrypoint.sh`.
 
-The volume `data` is mounted at `/app/data`. `DB_PATH=/app/data/db.sqlite3`
-must stay set. Backups are Fly's automatic volume snapshots.
+The SQLite file lives on a Coolify-managed persistent volume mounted at
+`/app/data`; `DB_PATH` must point inside it (`/app/data/db.sqlite3`). Back the
+volume up at the Coolify/host level — there are no Fly volume snapshots anymore.
 
 ## Deployment
 
-- CI: `.github/workflows/fly-deploy.yml` runs tests on every push, then
-  deploys on pushes to `main` using the `FLY_API_TOKEN` repo secret (scoped
-  deploy token for `notes-tomd-org`).
-- When `ALLOWED_HOSTS` or `CSRF_TRUSTED_ORIGINS` change, update them via
-  `fly secrets set` — both must include any domain that serves the site, with
-  scheme for CSRF (`https://...`) and without for ALLOWED_HOSTS.
-- New subdomains: use the `assign-fly-subdomain` skill; it handles Fly cert +
-  Cloudflare CNAMEs and reminds about `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS`.
+Deployed on Coolify (`admin.co.tomd.org`); app `notes-tomd-org`, UUID
+`xok61kj0vasx16hv3xkv9qj9`, a single `dockerfile`-build container.
+
+- **No CI.** Coolify's GitHub App builds and deploys on every push to `main`.
+  There is **no GitHub Actions workflow anymore** (the old `fly-deploy.yml` was
+  removed when the site left Fly), so **nothing runs the tests on push** — run
+  `python manage.py test notes` locally *before* pushing.
+- **Env / secrets** (`ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `SECRET_KEY`,
+  `DB_PATH`, superuser vars) live in the Coolify app's Environment Variables
+  (Coolify UI, or `coolify app env`), **not** `fly secrets`. After changing
+  them, restart the app (`coolify app restart <uuid>`). `ALLOWED_HOSTS` and
+  `CSRF_TRUSTED_ORIGINS` must include every domain that serves the site — with
+  scheme for CSRF (`https://...`), without for ALLOWED_HOSTS.
+- **New domains:** add the FQDN to the Coolify app's Domains and a Cloudflare
+  CNAME, then update `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` and restart. The
+  `assign-fly-subdomain` skill is Fly-specific and does **not** apply here.
+- **Running a management command in prod** (e.g. the `rerender_notes`
+  back-fill): the Coolify API can't exec ad-hoc commands, so SSH the host and
+  `docker exec`. The container name is `<uuid>-<digits>` and changes each
+  deploy, so resolve it first:
+  ```sh
+  ssh root@admin.co.tomd.org \
+    "docker exec \$(docker ps --format '{{.Names}}' | grep xok61kj0vasx16hv3xkv9qj9) \
+       python manage.py <command>"
+  ```
+  No `DEBUG=1` needed in the container.
 
 ## Things NOT to do
 
-- Don't add a `release_command` for migrations (see SQLite note above).
+- Don't move migrations out of `entrypoint.sh` into a separate build/release
+  step that doesn't mount the data volume (see SQLite note above).
+- Don't re-add a Fly deploy GitHub Action (the Fly app is stopped; Coolify
+  deploys via its GitHub App). If you want CI to run tests on push, add a
+  *test-only* workflow — don't resurrect Fly deploys.
 - Don't switch `STORAGES` away from `CompressedManifestStaticFilesStorage` in
   prod — if you do, update `Dockerfile` and ensure whitenoise can still serve.
 - Don't widen the bleach allowlist (`notes/rendering.py`) without a test that
@@ -112,5 +153,6 @@ must stay set. Backups are Fly's automatic volume snapshots.
   considering URL collisions with already-published notes. If you shorten it,
   collisions get likelier; if you lengthen it, old URLs still work.
 - Don't change `WEBAUTHN_RP_ID` away from `notes.tomd.org`, don't derive it
-  from the request host, and don't add `notes-tomd-org.fly.dev` as an alt
-  origin — every existing passkey would stop working.
+  from the request host, and don't add the Coolify alt domain
+  (`notes-tomd-org.co.tomd.org`, or the old `.fly.dev`) as an alt origin —
+  every existing passkey would stop working.
