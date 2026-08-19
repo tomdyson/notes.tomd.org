@@ -9,7 +9,7 @@ Publish only after the user explicitly requests sharing or publication. Treat ph
 
 1. Prepare the final Markdown. Preserve the user's content and structure. Infer a concise title only when helpful; omit the title when none is apparent.
 2. Explain that an unpassworded note is accessible to anyone with its URL if the user appears unaware of that fact or the content seems sensitive. Ask before publishing when sensitivity or publication intent is genuinely ambiguous.
-3. Run `scripts/share_note.py`, passing a Markdown file or `-` for stdin. Add `--title`, `--slug`, or `--password-env` only when requested or already supplied. Never put a password directly on the command line.
+3. Run `scripts/share_note`, passing a Markdown file or `-` for stdin. The wrapper loads the user's login environment before starting the client. Add `--title`, `--slug`, or `--password-env` only when requested or already supplied. Never put a password directly on the command line.
 4. On success, return the exact `url` from the script's JSON output as a clickable link. Mention password protection without revealing the password.
 5. On failure, report the API's error message. Do not claim that a note was published unless the script returns a successful JSON response.
 
@@ -18,5 +18,5 @@ The script reads `NOTES_TOMD_TOKEN` and optionally `NOTES_TOMD_API_URL`. Never p
 Example:
 
 ```sh
-python3 scripts/share_note.py /path/to/note.md --title "Release notes"
+scripts/share_note /path/to/note.md --title "Release notes"
 ```
