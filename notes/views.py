@@ -1,12 +1,20 @@
+import hashlib
+import hmac
+import json
+
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import RequestDataTooBig
+from django.db import IntegrityError, transaction
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from . import gate
 from .forms import NoteForm, UnlockForm
 from .images import ImageError, process_upload
-from .models import Image, Note
+from .models import Image, Note, NoteApiIdempotencyRecord, NoteApiToken
 from .rendering import toggle_task_in_markdown
 
 
@@ -18,6 +26,207 @@ def home(request):
             {"notes": Note.objects.all()},
         )
     return render(request, "notes/home_public.html", {"show_public_header": True})
+
+
+def _api_error(code, message, *, status, fields=None):
+    error = {"code": code, "message": message}
+    if fields is not None:
+        error["fields"] = fields
+    return JsonResponse({"error": error}, status=status)
+
+
+def _authenticate_note_api(request):
+    authorization = request.headers.get("Authorization", "")
+    scheme, separator, secret = authorization.partition(" ")
+    if not separator or scheme.lower() != "bearer":
+        return None
+    return NoteApiToken.authenticate(secret.strip())
+
+
+def _note_api_response(request, note):
+    return {
+        "slug": note.slug,
+        "title": note.title,
+        "url": request.build_absolute_uri(f"/{note.slug}/"),
+        "raw_url": request.build_absolute_uri(f"/{note.slug}/raw"),
+        "password_protected": note.has_password,
+        "created_at": note.created_at.isoformat(),
+        "updated_at": note.updated_at.isoformat(),
+    }
+
+
+@csrf_exempt
+@require_POST
+def api_create_note(request):
+    token = _authenticate_note_api(request)
+    if token is None:
+        response = _api_error(
+            "unauthorized", "A valid bearer token is required.", status=401
+        )
+        response["WWW-Authenticate"] = "Bearer"
+        return response
+    token.mark_used()
+    if not token.permits("notes:create"):
+        return _api_error(
+            "insufficient_scope",
+            "The token does not have the notes:create scope.",
+            status=403,
+        )
+
+    if request.content_type != "application/json":
+        return _api_error(
+            "unsupported_media_type",
+            "Content-Type must be application/json.",
+            status=415,
+        )
+    max_request_bytes = settings.NOTE_API_MAX_REQUEST_BYTES
+    try:
+        content_length = int(request.headers.get("Content-Length", "0"))
+    except ValueError:
+        content_length = 0
+    if content_length > max_request_bytes:
+        return _api_error(
+            "request_too_large",
+            f"The request body must be {max_request_bytes} bytes or fewer.",
+            status=413,
+        )
+    try:
+        raw_body = request.body
+    except RequestDataTooBig:
+        return _api_error(
+            "request_too_large", "The request body is too large.", status=413
+        )
+    if len(raw_body) > max_request_bytes:
+        return _api_error(
+            "request_too_large",
+            f"The request body must be {max_request_bytes} bytes or fewer.",
+            status=413,
+        )
+    try:
+        payload = json.loads(raw_body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _api_error("invalid_json", "The request body is not valid JSON.", status=400)
+    if not isinstance(payload, dict):
+        return _api_error("invalid_json", "The JSON body must be an object.", status=400)
+
+    allowed_fields = {"title", "markdown", "slug", "password"}
+    unknown_fields = sorted(set(payload) - allowed_fields)
+    if unknown_fields:
+        return _api_error(
+            "unknown_fields",
+            "The request contains unsupported fields.",
+            status=400,
+            fields=unknown_fields,
+        )
+
+    normalized = {}
+    for field in ("title", "slug", "password"):
+        value = payload.get(field, "")
+        if value is None:
+            value = ""
+        if not isinstance(value, str):
+            return _api_error(
+                "validation_error",
+                "One or more fields are invalid.",
+                status=422,
+                fields={field: [{"message": "Must be a string.", "code": "invalid"}]},
+            )
+        normalized[field] = value
+
+    markdown = payload.get("markdown")
+    if not isinstance(markdown, str):
+        return _api_error(
+            "validation_error",
+            "One or more fields are invalid.",
+            status=422,
+            fields={"markdown": [{"message": "Must be a string.", "code": "invalid"}]},
+        )
+    normalized["markdown"] = markdown
+    if len(normalized["password"]) > 128:
+        return _api_error(
+            "validation_error",
+            "One or more fields are invalid.",
+            status=422,
+            fields={
+                "password": [
+                    {"message": "Must be 128 characters or fewer.", "code": "max_length"}
+                ]
+            },
+        )
+
+    idempotency_key = request.headers.get("Idempotency-Key", "").strip()
+    if len(idempotency_key) > 200:
+        return _api_error(
+            "invalid_idempotency_key",
+            "Idempotency-Key must be 200 characters or fewer.",
+            status=400,
+        )
+    canonical_payload = json.dumps(
+        payload, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    # Key the digest so a database leak cannot be used to test guesses for a
+    # password included in an idempotent request.
+    request_digest = hmac.new(
+        settings.SECRET_KEY.encode("utf-8"), canonical_payload, hashlib.sha256
+    ).hexdigest()
+
+    if idempotency_key:
+        existing = NoteApiIdempotencyRecord.objects.filter(
+            token=token, key=idempotency_key
+        ).first()
+        if existing:
+            if existing.request_digest != request_digest:
+                return _api_error(
+                    "idempotency_conflict",
+                    "This idempotency key was already used with different input.",
+                    status=409,
+                )
+            response = JsonResponse(existing.response_body, status=200)
+            response["Idempotent-Replay"] = "true"
+            return response
+
+    form = NoteForm({**normalized, "clear_password": False})
+    if not form.is_valid():
+        return _api_error(
+            "validation_error",
+            "One or more fields are invalid.",
+            status=422,
+            fields=form.errors.get_json_data(escape_html=True),
+        )
+
+    try:
+        with transaction.atomic():
+            note = form.save()
+            response_body = _note_api_response(request, note)
+            if idempotency_key:
+                NoteApiIdempotencyRecord.objects.create(
+                    token=token,
+                    key=idempotency_key,
+                    request_digest=request_digest,
+                    response_body=response_body,
+                    note=note,
+                )
+    except IntegrityError:
+        # A concurrent retry can win the unique idempotency-key race. The
+        # transaction above rolls back its duplicate note before we replay it.
+        if not idempotency_key:
+            raise
+        existing = NoteApiIdempotencyRecord.objects.filter(
+            token=token, key=idempotency_key
+        ).first()
+        if existing and existing.request_digest == request_digest:
+            response = JsonResponse(existing.response_body, status=200)
+            response["Idempotent-Replay"] = "true"
+            return response
+        if existing:
+            return _api_error(
+                "idempotency_conflict",
+                "This idempotency key was already used with different input.",
+                status=409,
+            )
+        raise
+
+    return JsonResponse(response_body, status=201)
 
 
 def _gate(request, note, next_url):

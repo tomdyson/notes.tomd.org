@@ -1,4 +1,6 @@
+import hashlib
 import re
+import secrets
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password as _check_password
@@ -6,6 +8,7 @@ from django.contrib.auth.hashers import make_password
 from django.db import IntegrityError, models, transaction
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
+from django.utils import timezone
 
 from .rendering import render_markdown
 from .slugs import generate_slug
@@ -69,6 +72,93 @@ class Note(models.Model):
         if not ids:
             return
         Image.objects.filter(short_id__in=ids).update(note=self)
+
+
+class NoteApiToken(models.Model):
+    """Revocable bearer token for the note API; the secret is never stored."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="note_api_tokens",
+    )
+    name = models.CharField(max_length=80)
+    prefix = models.CharField(max_length=12, db_index=True)
+    token_digest = models.CharField(max_length=64, unique=True)
+    scopes = models.CharField(max_length=255, default="notes:create")
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.prefix}…)"
+
+    @staticmethod
+    def digest(secret: str) -> str:
+        return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def issue(cls, *, user, name: str, scopes: str = "notes:create"):
+        secret = f"nt_{secrets.token_urlsafe(32)}"
+        token = cls.objects.create(
+            user=user,
+            name=name,
+            prefix=secret[:12],
+            token_digest=cls.digest(secret),
+            scopes=scopes,
+        )
+        return token, secret
+
+    @classmethod
+    def authenticate(cls, secret: str):
+        if not secret or not secret.startswith("nt_"):
+            return None
+        return (
+            cls.objects.select_related("user")
+            .filter(
+                token_digest=cls.digest(secret),
+                revoked_at__isnull=True,
+                user__is_active=True,
+            )
+            .first()
+        )
+
+    def permits(self, scope: str) -> bool:
+        return scope in self.scopes.split()
+
+    def mark_used(self) -> None:
+        now = timezone.now()
+        type(self).objects.filter(pk=self.pk).update(last_used_at=now)
+        self.last_used_at = now
+
+    def revoke(self) -> None:
+        now = timezone.now()
+        type(self).objects.filter(pk=self.pk).update(revoked_at=now)
+        self.revoked_at = now
+
+
+class NoteApiIdempotencyRecord(models.Model):
+    token = models.ForeignKey(
+        NoteApiToken,
+        on_delete=models.CASCADE,
+        related_name="idempotency_records",
+    )
+    key = models.CharField(max_length=200)
+    request_digest = models.CharField(max_length=64)
+    response_body = models.JSONField()
+    note = models.ForeignKey(Note, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["token", "key"],
+                name="unique_note_api_idempotency_key",
+            )
+        ]
 
 
 def _image_upload_to(instance, filename):

@@ -99,6 +99,9 @@ MEDIA_URL = "/i-media/"
 IMAGE_MAX_UPLOAD_BYTES = int(os.environ.get("IMAGE_MAX_UPLOAD_BYTES", 10 * 1024 * 1024))
 IMAGE_MAX_DIMENSION = int(os.environ.get("IMAGE_MAX_DIMENSION", 2000))
 IMAGE_WEBP_QUALITY = int(os.environ.get("IMAGE_WEBP_QUALITY", 85))
+NOTE_API_MAX_REQUEST_BYTES = int(
+    os.environ.get("NOTE_API_MAX_REQUEST_BYTES", 1024 * 1024)
+)
 
 if DEBUG or _IS_TEST:
     STORAGES = {

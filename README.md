@@ -38,15 +38,16 @@ DEBUG=1 python manage.py runserver
 python manage.py test notes
 ```
 
-195 tests cover slug generation, markdown rendering + XSS sanitisation,
+The test suite covers slug generation, markdown rendering + XSS sanitisation,
 Mermaid fence detection (including CRLF-submitted textareas), the `Note`
 model, public read views, URL-shadowing guards, auth-gated authoring,
 password gating, rate limiting, editor markup, UI structure, the `Passkey`
 model, both WebAuthn flows (register + login, with crypto verification
 mocked), the `Image` model + cascade/signal cleanup, the upload endpoint
 (auth + CSRF), the Pillow pipeline (resize, WebP, EXIF-stripping), upload
-rejection (SVG / oversized / non-image), image→expand-link wrapping, and the
-orphan-image sweep command.
+rejection (SVG / oversized / non-image), image→expand-link wrapping, the
+orphan-image sweep command, bearer-token note creation, idempotent API retries,
+and the bundled note-sharing skill client.
 
 ## URL map
 
@@ -55,6 +56,7 @@ orphan-image sweep command.
 | `/` | authed | Dashboard (anonymous GET returns 404) |
 | `/login/` | anon | Django login; also exposes passkey login |
 | `/new/` | authed | Editor for a new note |
+| `/api/v1/notes` | bearer token | POST JSON to create and share a note |
 | `/upload/` | authed | POST-only image upload (multipart), returns JSON `{url, markdown}` |
 | `/i/<short_id>.webp` | public | Serve a stored image |
 | `/<slug>/` | public | Rendered note (password-gated if set) |
@@ -72,6 +74,46 @@ Slugs `admin`, `login`, `logout`, `new`, `static`, `favicon.ico`, `robots.txt`,
 `healthz`, `_`, `api`, `i`, `upload` are reserved. `/passkeys/` is also
 effectively reserved because the literal `/passkeys/` path is registered
 before the `<slug>/` catch-all.
+
+## Agent sharing API
+
+`POST /api/v1/notes` creates a note using the same validation, Markdown
+rendering, password hashing and slug generation as the browser editor. Tokens
+are scoped, revocable, and stored as SHA-256 digests; the raw secret is shown
+only when it is created.
+
+Create a token in the environment whose database the API will use:
+
+```sh
+python manage.py create_note_api_token --username tom --name Codex
+```
+
+In production, run that command inside the running Coolify container using the
+procedure under "Running a management command in prod" below. Store the
+printed token in the agent's secret/environment configuration as
+`NOTES_TOMD_TOKEN`; do not put it in this repository or in a skill file. Delete
+the token in Django admin to revoke it.
+
+Example request:
+
+```sh
+curl https://notes.tomd.org/api/v1/notes \
+  -H "Authorization: Bearer $NOTES_TOMD_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  --data '{"title":"Example","markdown":"# Hello"}'
+```
+
+Accepted JSON fields are `markdown` (required), `title`, `slug`, and
+`password`. A successful response includes `url`, `raw_url`, timestamps, and
+whether the note is password-protected. Notes without a password are
+accessible to anyone who has or discovers their URL. Requests default to a
+1 MiB limit; override it with `NOTE_API_MAX_REQUEST_BYTES` if needed.
+
+The version-controlled personal skill is in `skills/share-notes/` and is also
+installed at `~/.codex/skills/share-notes/` on this machine. It triggers only
+on explicit sharing/publication requests and invokes its deterministic Python
+client, which uses the API's idempotency support for safe retries.
 
 ## Deployment
 
@@ -125,6 +167,7 @@ change (`--dry-run` to preview the count).
 Optional image-tuning overrides (defaults fine for most cases):
 `MEDIA_ROOT`, `IMAGE_MAX_UPLOAD_BYTES` (default 10 MB),
 `IMAGE_MAX_DIMENSION` (default 2000 px), `IMAGE_WEBP_QUALITY` (default 85).
+The agent note API also accepts `NOTE_API_MAX_REQUEST_BYTES` (default 1 MiB).
 
 ### TODO: schedule the orphan-image sweep
 
@@ -148,18 +191,20 @@ the "uploaded but never saved" case.
 ```
 noteserver/       Django project (settings, root URLs, wsgi)
 notes/            App
-  models.py         Note + Image + Passkey
+  models.py         Note + Image + Passkey + API token/idempotency models
   rendering.py      markdown → sanitised HTML (wraps images in expand-links)
   slugs.py          generate_slug(), reserved set, shape validation
   gate.py           password-unlock session + rate limiter
   forms.py          NoteForm, UnlockForm
-  views.py          note CRUD, public read, upload_image, serve_image
+  views.py          note CRUD, public read, agent API, image upload/serve
   images.py         Pillow pipeline: validate, resize, WebP re-encode
   passkey_views.py  WebAuthn register / login / manage
-  management/commands/  sweep_orphan_images.py, rerender_notes.py
+  management/commands/  maintenance commands + API token creation
   static/notes/     editor.js, passkeys.js, site.css, pygments.css
   templates/notes/  base.html + page templates
-  tests/            195 unit + integration tests
+  tests/            Unit + integration tests
+skills/
+  share-notes/      Personal Codex skill + deterministic API client
 Dockerfile        Python 3.13 slim; collectstatic at build with manifest storage
 entrypoint.sh     migrate + superuser sync + gunicorn
 fly.toml          legacy Fly config — unused since the move to Coolify
@@ -173,6 +218,8 @@ fly.toml          legacy Fly config — unused since the move to Coolify
 - Links get `rel="nofollow noopener"` via a bleach linker callback.
 - Password hashes use Django's `make_password`/`check_password`; raw values
   never stored.
+- Note API bearer tokens are high-entropy, stored only as SHA-256 digests,
+  scoped to note creation, revocable, and never accepted from query strings.
 - Unlock throttle: 3 wrong attempts per `(IP, slug, minute)` → 429.
 - WebAuthn RP ID is hardcoded to `notes.tomd.org` in `noteserver/settings.py`
   — passkeys registered in prod will not work against any other hostname
