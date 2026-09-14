@@ -23,6 +23,7 @@ class Note(models.Model):
     markdown = models.TextField()
     html = models.TextField(blank=True)
     password_hash = models.CharField(max_length=256, blank=True)
+    comments_enabled = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -72,6 +73,45 @@ class Note(models.Model):
         if not ids:
             return
         Image.objects.filter(short_id__in=ids).update(note=self)
+
+
+class Comment(models.Model):
+    """A reader's comment on a note, optionally anchored to a text selection.
+
+    Anchoring follows the W3C Web Annotation text-quote model: ``quote`` is the
+    selected text as it appeared in the rendered note, ``prefix``/``suffix``
+    are a few characters of surrounding context used to disambiguate repeated
+    phrases, and ``start_offset`` is a hint into the rendered text content.
+    The selectors are captured and resolved in the browser; the server stores
+    them verbatim. A comment with no ``quote`` is a note-level comment.
+    """
+
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name="comments")
+    parent = models.ForeignKey(
+        "self", on_delete=models.CASCADE, null=True, blank=True, related_name="replies"
+    )
+    author_name = models.CharField(max_length=80)
+    # Random per-browser token, stored in the session, so a commenter can
+    # delete their own comments without an account. Never shown to readers.
+    author_key = models.CharField(max_length=64, blank=True, db_index=True)
+    # Set when the logged-in note owner comments, so replies get an author badge.
+    is_owner = models.BooleanField(default=False)
+    body = models.TextField()
+    quote = models.TextField(blank=True)
+    prefix = models.CharField(max_length=64, blank=True)
+    suffix = models.CharField(max_length=64, blank=True)
+    start_offset = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+
+    def __str__(self) -> str:
+        return f"{self.author_name} on {self.note}"
+
+    @property
+    def is_anchored(self) -> bool:
+        return bool(self.quote)
 
 
 class NoteApiToken(models.Model):

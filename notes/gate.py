@@ -4,7 +4,9 @@ from collections import defaultdict
 
 _MAX_ATTEMPTS = 3
 _WINDOW_SECONDS = 60
-_attempts: dict[tuple[str, str], list[float]] = defaultdict(list)
+# Keyed by (scope, client IP, slug) so unlock attempts and comment posts on
+# the same note count separately.
+_attempts: dict[tuple[str, str, str], list[float]] = defaultdict(list)
 
 
 def reset_rate_limiter() -> None:
@@ -18,15 +20,25 @@ def _client_ip(request) -> str:
     return request.META.get("REMOTE_ADDR", "unknown")
 
 
-def is_rate_limited(request, slug: str) -> bool:
+def _bucket(request, slug: str, scope: str) -> tuple[str, str, str]:
+    return (scope, _client_ip(request), slug)
+
+
+def is_rate_limited(
+    request, slug: str, *, scope: str = "unlock", limit: int = _MAX_ATTEMPTS
+) -> bool:
     now = time.monotonic()
-    key = (_client_ip(request), slug)
+    key = _bucket(request, slug, scope)
     _attempts[key] = [t for t in _attempts[key] if now - t < _WINDOW_SECONDS]
-    return len(_attempts[key]) >= _MAX_ATTEMPTS
+    return len(_attempts[key]) >= limit
 
 
-def record_failed_attempt(request, slug: str) -> None:
-    _attempts[(_client_ip(request), slug)].append(time.monotonic())
+def record_attempt(request, slug: str, *, scope: str = "unlock") -> None:
+    _attempts[_bucket(request, slug, scope)].append(time.monotonic())
+
+
+# Unlock attempts only count when they fail; the call site says so.
+record_failed_attempt = record_attempt
 
 
 def is_unlocked(request, slug: str) -> bool:

@@ -114,3 +114,47 @@ h1, h2, h3, h4, h5, h6 {
   vertical-align: baseline;
   transform: translateY(1px);
 }
+
+/* Anchored comments: highlights in the note, the selection popover, and the
+   pairing between a highlight and its thread item. */
+mark.comment-highlight {
+  background: rgba(251, 191, 36, 0.28);
+  color: inherit;
+  border-bottom: 1px solid rgba(217, 119, 6, 0.55);
+  border-radius: 2px;
+  cursor: pointer;
+}
+mark.comment-highlight.is-active { background: rgba(251, 191, 36, 0.6); }
+mark.comment-highlight.is-pending {
+  background: rgba(99, 102, 241, 0.16);
+  border-bottom-color: rgba(79, 70, 229, 0.5);
+  cursor: text;
+}
+.comment-popover {
+  position: absolute;
+  z-index: 20;
+  padding: 0.3rem 0.75rem;
+  font: 500 0.8rem/1.4 "Inter", system-ui, sans-serif;
+  color: #fff;
+  background: #4338ca;
+  border: none;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  user-select: none;
+}
+.comment-popover:hover { background: #3730a3; }
+#comments li.comment {
+  border-radius: 4px;
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+#comments li.comment.is-active {
+  background: rgba(251, 191, 36, 0.14);
+  box-shadow: 0 0 0 6px rgba(251, 191, 36, 0.14);
+}
+#comments li.is-anchored > [data-comment-quote] { cursor: pointer; }
+#comments li.is-anchored > [data-comment-quote]:hover { color: #4A443C; }
+#comments li.is-orphaned > [data-comment-quote] {
+  border-left-color: #d6cfc2;
+  text-decoration: line-through;
+}

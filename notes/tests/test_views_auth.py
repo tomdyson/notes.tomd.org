@@ -269,3 +269,47 @@ class PasswordOnEditorTests(AuthBase):
         n.refresh_from_db()
         self.assertFalse(n.check_password("orig"))
         self.assertTrue(n.check_password("different"))
+
+
+class CommentsToggleOnEditorTests(AuthBase):
+    def _post(self, url, **overrides):
+        data = {"slug": "c1", "title": "", "markdown": "x", "password": "", "clear_password": ""}
+        data.update(overrides)
+        return self.client.post(url, data)
+
+    def test_new_note_defaults_to_comments_off(self):
+        self.login()
+        self._post("/new/")
+        self.assertFalse(Note.objects.get(slug="c1").comments_enabled)
+
+    def test_checkbox_on_create_enables_comments(self):
+        self.login()
+        self._post("/new/", comments_enabled="on")
+        self.assertTrue(Note.objects.get(slug="c1").comments_enabled)
+
+    def test_checkbox_on_edit_enables_comments(self):
+        self.login()
+        Note.objects.create(slug="c1", markdown="x")
+        self._post("/c1/edit/", comments_enabled="on")
+        self.assertTrue(Note.objects.get(slug="c1").comments_enabled)
+
+    def test_unchecked_on_edit_disables_comments(self):
+        self.login()
+        Note.objects.create(slug="c1", markdown="x", comments_enabled=True)
+        self._post("/c1/edit/")
+        self.assertFalse(Note.objects.get(slug="c1").comments_enabled)
+
+    def test_editor_checkbox_reflects_current_state(self):
+        self.login()
+        Note.objects.create(slug="c1", markdown="x", comments_enabled=True)
+        r = self.client.get("/c1/edit/")
+        self.assertRegex(
+            r.content.decode(),
+            r'<input[^>]*name="comments_enabled"[^>]*\schecked',
+        )
+        Note.objects.filter(slug="c1").update(comments_enabled=False)
+        r = self.client.get("/c1/edit/")
+        self.assertNotRegex(
+            r.content.decode(),
+            r'<input[^>]*name="comments_enabled"[^>]*\schecked',
+        )

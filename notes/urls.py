@@ -22,4 +22,6 @@ urlpatterns = [
     path("<slug:slug>/delete/", views.delete_note, name="delete"),
     path("<slug:slug>/toggle/", views.toggle_task, name="toggle_task"),
     path("<slug:slug>/unlock/", views.unlock_note, name="unlock"),
+    path("<slug:slug>/comments/", views.create_comment, name="comment_create"),
+    path("<slug:slug>/comments/<int:pk>/delete/", views.delete_comment, name="comment_delete"),
 ]

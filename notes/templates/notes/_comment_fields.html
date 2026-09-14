@@ -1,0 +1,37 @@
+{% if anchor_fields %}
+<input type="hidden" name="quote" value="{{ comment_form.quote.value|default_if_none:'' }}">
+<input type="hidden" name="prefix" value="{{ comment_form.prefix.value|default_if_none:'' }}">
+<input type="hidden" name="suffix" value="{{ comment_form.suffix.value|default_if_none:'' }}">
+<input type="hidden" name="start_offset" value="{{ comment_form.start_offset.value|default_if_none:'' }}">
+{# No display utility on the hidden element: Tailwind's flex/block classes outrank the hidden attribute. #}
+<div data-anchor-chip hidden class="mb-2">
+  <p class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-stone-700">
+    <span class="shrink-0 text-stone-500">On:</span>
+    <q data-anchor-text class="italic break-words"></q>
+    <button type="button" data-anchor-clear aria-label="Remove selection" class="ml-auto shrink-0 text-stone-400 hover:text-stone-800">&times;</button>
+  </p>
+</div>
+{% endif %}
+{% if not user.is_authenticated %}
+  {% if commenter_name %}
+  <p class="mb-2 text-xs text-stone-500">
+    Commenting as <span class="font-medium text-stone-800">{{ commenter_name }}</span>
+    <button type="button" class="ml-1 underline hover:text-stone-800"
+            onclick="var f=this.closest('form');var w=f.querySelector('[data-name-field]');w.hidden=false;w.querySelector('input').focus();this.parentNode.hidden=true">change</button>
+  </p>
+  <div data-name-field hidden class="mb-2">
+    <input type="text" name="name" maxlength="80" value="{{ commenter_name }}" placeholder="Your name" aria-label="Name" autocomplete="name"
+           class="block w-full rounded-md border-stone-300 shadow-sm py-1.5 px-3 text-sm border focus:ring-indigo-500 focus:border-indigo-500">
+  </div>
+  {% else %}
+  <div class="mb-2">
+    <input type="text" name="name" maxlength="80" required placeholder="Your name" aria-label="Name" autocomplete="name"
+           class="block w-full rounded-md border-stone-300 shadow-sm py-1.5 px-3 text-sm border focus:ring-indigo-500 focus:border-indigo-500">
+  </div>
+  {% endif %}
+{% endif %}
+<textarea name="body" rows="3" required maxlength="5000" aria-label="Comment" placeholder="{{ placeholder|default:'Write a comment…' }}"
+          class="block w-full rounded-md border-stone-300 shadow-sm py-2 px-3 text-sm border focus:ring-indigo-500 focus:border-indigo-500">{{ body_value|default_if_none:'' }}</textarea>
+<div class="mt-2 flex justify-end">
+  <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">{{ submit_label|default:'Post comment' }}</button>
+</div>

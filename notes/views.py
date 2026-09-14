@@ -1,21 +1,31 @@
 import hashlib
 import hmac
 import json
+import secrets
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import RequestDataTooBig
 from django.db import IntegrityError, transaction
-from django.http import FileResponse, Http404, HttpResponse, JsonResponse
+from django.http import (
+    FileResponse,
+    Http404,
+    HttpResponse,
+    HttpResponseForbidden,
+    JsonResponse,
+)
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from . import gate
-from .forms import NoteForm, UnlockForm
+from .forms import CommentForm, NoteForm, UnlockForm
 from .images import ImageError, process_upload
-from .models import Image, Note, NoteApiIdempotencyRecord, NoteApiToken
+from .models import Comment, Image, Note, NoteApiIdempotencyRecord, NoteApiToken
 from .rendering import toggle_task_in_markdown
+
+
+COMMENT_RATE_LIMIT = 10  # posts per IP per note per minute
 
 
 def home(request):
@@ -235,12 +245,95 @@ def _gate(request, note, next_url):
     return None
 
 
+def _commenter_name(request) -> str:
+    if request.user.is_authenticated:
+        return request.user.get_full_name() or request.user.get_username()
+    return request.session.get("commenter_name", "")
+
+
+def _comments_context(request, note, form=None):
+    key = request.session.get("commenter_key", "")
+    is_owner = request.user.is_authenticated
+
+    def can_delete(comment):
+        return is_owner or (bool(key) and comment.author_key == key)
+
+    threads = list(note.comments.filter(parent__isnull=True).prefetch_related("replies"))
+    count = 0
+    for thread in threads:
+        thread.can_delete = can_delete(thread)
+        count += 1
+        for reply in thread.replies.all():
+            reply.can_delete = can_delete(reply)
+            count += 1
+    return {
+        "comment_threads": threads,
+        "comment_count": count,
+        "comment_form": form if form is not None else CommentForm(note=note),
+        "commenter_name": _commenter_name(request),
+    }
+
+
+def _view_context(request, note, comment_form=None):
+    context = {"note": note}
+    if note.comments_enabled:
+        context.update(_comments_context(request, note, comment_form))
+    return context
+
+
 def view_note(request, slug):
     note = get_object_or_404(Note, slug=slug)
     redirect_resp = _gate(request, note, f"/{slug}/")
     if redirect_resp:
         return redirect_resp
-    return render(request, "notes/view.html", {"note": note})
+    return render(request, "notes/view.html", _view_context(request, note))
+
+
+@require_POST
+def create_comment(request, slug):
+    note = get_object_or_404(Note, slug=slug)
+    redirect_resp = _gate(request, note, f"/{slug}/")
+    if redirect_resp:
+        return redirect_resp
+    if not note.comments_enabled:
+        raise Http404
+    if gate.is_rate_limited(request, slug, scope="comment", limit=COMMENT_RATE_LIMIT):
+        return HttpResponse("Too many comments. Try again in a minute.", status=429)
+    form = CommentForm(request.POST, note=note, known_name=_commenter_name(request))
+    if not form.is_valid():
+        return render(
+            request, "notes/view.html", _view_context(request, note, form), status=400
+        )
+    comment = form.save(commit=False)
+    comment.note = note
+    if request.user.is_authenticated:
+        comment.is_owner = True
+    else:
+        key = request.session.get("commenter_key")
+        if not key:
+            key = secrets.token_urlsafe(16)
+            request.session["commenter_key"] = key
+        request.session["commenter_name"] = comment.author_name
+        comment.author_key = key
+    comment.save()
+    gate.record_attempt(request, slug, scope="comment")
+    return redirect(f"/{slug}/#comment-{comment.pk}")
+
+
+@require_POST
+def delete_comment(request, slug, pk):
+    note = get_object_or_404(Note, slug=slug)
+    redirect_resp = _gate(request, note, f"/{slug}/")
+    if redirect_resp:
+        return redirect_resp
+    if not note.comments_enabled:
+        raise Http404
+    comment = get_object_or_404(Comment, pk=pk, note=note)
+    key = request.session.get("commenter_key", "")
+    if not (request.user.is_authenticated or (key and comment.author_key == key)):
+        return HttpResponseForbidden("You can only delete your own comments.")
+    comment.delete()
+    return redirect(f"/{slug}/#comments")
 
 
 def raw_note(request, slug):

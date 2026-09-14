@@ -13,7 +13,8 @@ Deployment below.)
 
 ## Commands
 
-- Run tests: `python manage.py test notes` (195 tests, ~15s)
+- Run tests: `python manage.py test notes` (279 tests, ~20s; the anchoring JS tests need `node`
+  on PATH and are skipped without it)
 - Run a single test: `python manage.py test notes.tests.test_rendering.RenderMarkdownTests.test_strips_script_tags`
 - Dev server: `DEBUG=1 python manage.py runserver`
 - Migrations (local): `DEBUG=1 python manage.py migrate`
@@ -36,7 +37,8 @@ prod container — it already has production settings in its environment.
   `test_editor_markup`, `test_ui_reorg`, `test_passkey_model`,
   `test_passkey_register`, `test_passkey_login`, `test_images_model`,
   `test_image_pipeline`, `test_image_rejection`, `test_image_gc`,
-  `test_upload`. Django's built-in `TestCase` — not pytest.
+  `test_upload`, `test_comments_model`, `test_comments_views`,
+  `test_comments_js` (runs `node --test notes/tests/js/anchors.test.mjs`). Django's built-in `TestCase` — not pytest.
 - Don't add new abstractions without a test that motivates them.
 
 ## Architecture gotchas
@@ -92,6 +94,30 @@ prod container — it already has production settings in its environment.
   attribute to submit with the editor form. If you add a new `NoteForm`
   field, render it in the footer panel and include `form="editor-form"`,
   otherwise it will be silently dropped on submit.
+
+- **Comments are gated with the note.** `notes/views.py` has `create_comment`
+  and `delete_comment`; both call `_gate` *before* anything else, then 404
+  when `note.comments_enabled` is off. Anonymous commenters are identified by
+  `commenter_name` and `commenter_key` in the session (same session that
+  holds the password unlock); a logged-in user's comments get `is_owner`.
+  Rate limiting reuses `notes/gate.py` with `scope="comment"` so comment
+  posts and unlock attempts on the same note count separately. Comment
+  bodies are plain text rendered with `urlize|linebreaksbr` — never pass
+  them through `render_markdown`. The anchor fields (`quote`, `prefix`,
+  `suffix`, `start_offset`) are stored verbatim (`strip=False`) and exposed
+  as `data-*` attributes on each thread's `<li>` for client-side anchoring.
+- **Anchoring is resolved in the browser, never on the server.**
+  `notes/static/notes/anchors.js` is a pure-string UMD module (exact at
+  offset → exact anywhere, context picks between repeats → approximate match
+  within 25% of the quote, which beyond 2 errors must also agree with the
+  stored prefix/suffix → orphan). `comments.js` maps offsets over the
+  concatenated text nodes of `.note-body`, skipping `.mermaid` (replaced by
+  SVG at runtime), captures selections with the same mapping, wraps hits in
+  `<mark class="comment-highlight">`, and reveals the `data-orphan-badge` on
+  misses. Keep the algorithm in `anchors.js` so it stays testable under node.
+  Don't put Tailwind display utilities (`flex`, `inline-block`) on elements
+  toggled with the `hidden` attribute — the utility wins and the element
+  shows.
 
 ## SQLite on a volume — critical
 

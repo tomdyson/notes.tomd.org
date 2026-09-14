@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import NoteApiToken
+from .models import Comment, NoteApiToken
 
 
 @admin.register(NoteApiToken)
@@ -27,3 +27,11 @@ class NoteApiTokenAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+
+@admin.register(Comment)
+class CommentAdmin(admin.ModelAdmin):
+    list_display = ("author_name", "note", "parent", "created_at")
+    list_filter = ("note",)
+    search_fields = ("author_name", "body", "quote")
+    readonly_fields = ("author_key", "created_at")

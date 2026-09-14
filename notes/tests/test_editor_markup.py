@@ -24,3 +24,14 @@ class EditorMarkupTests(TestCase):
         self.assertContains(r, "mermaid")
         self.assertContains(r, "highlight.js")
         self.assertContains(r, "editor.js")
+
+    def test_comments_toggle_lives_in_footer_and_submits_with_editor_form(self):
+        r = self.client.get("/new/")
+        html = r.content.decode()
+        # Attribute order is irrelevant; what matters is that the checkbox is
+        # bound to the editor form, since it renders outside <form>.
+        self.assertRegex(
+            html,
+            r'<input(?=[^>]*\bform="editor-form")(?=[^>]*\bname="comments_enabled")'
+            r'(?=[^>]*\btype="checkbox")[^>]*>',
+        )

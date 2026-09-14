@@ -19,6 +19,7 @@
     </span>
   </footer>
 </article>
+{% include "notes/comments.html" %}
 {% endblock %}
 {% block body_extra %}
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -31,5 +32,9 @@
 </script>
 {% if user.is_authenticated %}
 <script src="{% static 'notes/task_toggle.js' %}"></script>
+{% endif %}
+{% if note.comments_enabled %}
+<script src="{% static 'notes/anchors.js' %}"></script>
+<script src="{% static 'notes/comments.js' %}"></script>
 {% endif %}
 {% endblock %}
