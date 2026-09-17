@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}{{ note.title|default:note.slug }}{% endblock %}
 {% block content %}
-<div class="{% if note.comments_enabled %}note-comments-layout{% if not comment_threads %} note-comments-layout--empty{% endif %}{% endif %}">
+<div class="note-view-layout{% if note.comments_enabled %} note-comments-layout{% if not comment_threads %} note-comments-layout--empty{% endif %}{% endif %}">
 <article class="bg-white border border-stone-200 shadow-sm rounded-lg p-8 sm:p-10">
   {% if note.title %}<h1 class="font-serif text-3xl mb-6">{{ note.title }}</h1>{% endif %}
   <div class="prose prose-stone max-w-none note-body"
@@ -39,6 +39,6 @@
 {% endif %}
 {% if note.comments_enabled %}
 <script src="{% static 'notes/anchors.js' %}"></script>
-<script src="{% static 'notes/comments.js' %}?v=comment-rail-5"></script>
+<script src="{% static 'notes/comments.js' %}?v=comment-rail-6"></script>
 {% endif %}
 {% endblock %}

@@ -474,10 +474,18 @@ def _comments_context(request, note, form=None):
 
 
 def _view_context(request, note, comment_form=None):
-    context = {"note": note}
+    context = {
+        "note": note,
+        "container_class": "note-page-width",
+        "header_container_class": "note-page-width",
+    }
     if note.comments_enabled:
+        comments_context = _comments_context(request, note, comment_form)
         context["container_class"] = "max-w-7xl"
-        context.update(_comments_context(request, note, comment_form))
+        context["header_container_class"] = "note-page-width note-header-width--comments"
+        if not comments_context["comment_threads"]:
+            context["header_container_class"] += " note-header-width--empty"
+        context.update(comments_context)
     return context
 
 
@@ -517,6 +525,8 @@ def create_comment(request, slug):
         comment.author_key = key
     comment.save()
     gate.record_attempt(request, slug, scope="comment")
+    if comment.parent_id:
+        return redirect(f"/{slug}/")
     return redirect(f"/{slug}/#comment-{comment.pk}")
 
 

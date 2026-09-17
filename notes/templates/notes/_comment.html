@@ -3,7 +3,7 @@
     <span class="font-medium text-stone-800">{{ c.author_name }}</span>
     {% if c.is_owner %}<span class="ml-1 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-indigo-700">author</span>{% endif %}
     <time datetime="{{ c.created_at|date:'c' }}" data-relative-time
-          title="{{ c.created_at|date:'Y-m-d H:i T' }}" class="ml-2">{{ c.created_at|date:"Y-m-d H:i" }}</time>
+          title="{{ c.created_at|date:'Y-m-d H:i T' }}" class="ml-2 text-stone-400">{{ c.created_at|date:"Y-m-d H:i" }}</time>
   </div>
   {% if c.can_delete %}
   {# comments.js swaps the native confirm for an inline two-step; the onsubmit is the no-JS fallback. #}

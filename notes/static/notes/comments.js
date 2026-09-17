@@ -383,6 +383,26 @@
     });
   }
 
+  function preserveReplyScroll() {
+    var key = "note-reply-scroll:" + window.location.pathname;
+    var saved = window.sessionStorage.getItem(key);
+    if (saved !== null) {
+      window.sessionStorage.removeItem(key);
+      var y = parseInt(saved, 10);
+      if (!isNaN(y)) {
+        window.requestAnimationFrame(function () {
+          window.requestAnimationFrame(function () { window.scrollTo(0, y); });
+        });
+      }
+    }
+
+    section.querySelectorAll('form input[name="parent"]').forEach(function (parent) {
+      parent.form.addEventListener("submit", function () {
+        window.sessionStorage.setItem(key, String(window.scrollY));
+      });
+    });
+  }
+
   function armNameEditors() {
     section.querySelectorAll("[data-name-field]").forEach(function (field) {
       var form = field.closest("form");
@@ -427,6 +447,7 @@
 
   armDeleteForms();
   armReplyCards();
+  preserveReplyScroll();
   armNameEditors();
 
   resolveAll();

@@ -132,10 +132,13 @@ h1, h2, h3, h4, h5, h6 {
   transform: translateY(1px);
 }
 
-/* Notes with comments become a paper-and-rail layout on roomy screens. */
-.note-comments-layout > article,
+/* Keep note cards at the same reading width with or without a comment rail. */
+.note-page-width {
+  max-width: 54rem;
+}
+.note-view-layout > article,
 .note-comments-layout > .comment-rail {
-  max-width: 56rem;
+  max-width: 52rem;
   margin-left: auto;
   margin-right: auto;
 }
@@ -156,11 +159,18 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 @media (min-width: 1200px) {
+  .note-header-width--comments {
+    max-width: 75rem;
+  }
+  .note-header-width--empty {
+    max-width: 69rem;
+  }
   .note-comments-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 20rem;
+    grid-template-columns: minmax(0, 52rem) 20rem;
     gap: 1rem;
     align-items: start;
+    justify-content: center;
   }
   .note-comments-layout > article,
   .note-comments-layout > .comment-rail {
@@ -171,7 +181,7 @@ h1, h2, h3, h4, h5, h6 {
     margin-top: 0;
   }
   .note-comments-layout--empty {
-    grid-template-columns: minmax(0, 1fr) 14rem;
+    grid-template-columns: minmax(0, 52rem) 14rem;
   }
   .note-comments-layout .comment-rail [data-comment-quote] {
     display: none;
@@ -242,6 +252,19 @@ mark.comment-highlight.is-pending {
 }
 #comments li.comment-thread > [data-reply-control][open] {
   margin-top: 0.5rem;
+}
+#comments li.comment-reply {
+  position: relative;
+}
+#comments li.comment-reply::before {
+  content: "";
+  position: absolute;
+  top: 0.15rem;
+  bottom: 0.15rem;
+  left: -0.75rem;
+  width: 2px;
+  border-radius: 999px;
+  background: #f0ede7;
 }
 #comments li.comment.is-active {
   background: rgba(251, 191, 36, 0.08);
