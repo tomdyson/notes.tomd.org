@@ -1,5 +1,5 @@
 {% if note.comments_enabled %}
-<section id="comments" data-comments class="comment-rail mt-6">
+<section id="comments" data-comments data-has-comments="{{ comment_threads|yesno:'true,false' }}" class="comment-rail mt-6">
   {% if comment_form.errors %}
   <div class="rounded-md bg-red-50 border border-red-200 p-3 mb-3 text-sm text-red-800">
     {% for errors in comment_form.errors.values %}{% for error in errors %}<p>{{ error }}</p>{% endfor %}{% endfor %}
@@ -11,14 +11,16 @@
       Add comment
       <span aria-hidden="true" class="comment-composer-icon text-lg font-normal text-stone-400">+</span>
     </summary>
-    <form method="post" action="{% url 'notes:comment_create' note.slug %}" data-comment-form class="p-3">
+    <form method="post" action="{% url 'notes:comment_create' note.slug %}" data-comment-form
+          hx-post="{% url 'notes:comment_create' note.slug %}" hx-target="#comments" hx-swap="outerHTML show:none"
+          class="p-3">
       {% csrf_token %}
       {% include "notes/_comment_fields.html" with body_value=comment_form.body.value anchor_fields=True %}
     </form>
   </details>
 
   {% if comment_threads %}
-  <ol class="space-y-2">
+  <ol data-comment-thread-list class="comment-thread-list space-y-2">
     {% for c in comment_threads %}
     <li id="comment-{{ c.pk }}" class="comment comment-thread bg-white border border-stone-200 rounded-lg p-3 cursor-pointer" tabindex="0" data-comment-id="{{ c.pk }}"{% if c.is_anchored %} data-quote="{{ c.quote }}" data-prefix="{{ c.prefix }}" data-suffix="{{ c.suffix }}" data-offset="{{ c.start_offset|default_if_none:'' }}"{% endif %}>
       {% include "notes/_comment.html" %}
@@ -33,7 +35,8 @@
       {% endif %}
       <details data-reply-control>
         <summary class="sr-only">Reply</summary>
-        <form method="post" action="{% url 'notes:comment_create' note.slug %}">
+        <form method="post" action="{% url 'notes:comment_create' note.slug %}"
+              hx-post="{% url 'notes:comment_create' note.slug %}" hx-target="#comments" hx-swap="outerHTML show:none">
           {% csrf_token %}
           <input type="hidden" name="parent" value="{{ c.pk }}">
           {% include "notes/_comment_fields.html" with placeholder="Write a reply…" submit_label="Reply" identity_label="Replying" secondary_submit=True %}

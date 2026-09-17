@@ -8,6 +8,7 @@
   {% if c.can_delete %}
   {# comments.js swaps the native confirm for an inline two-step; the onsubmit is the no-JS fallback. #}
   <form method="post" action="{% url 'notes:comment_delete' note.slug c.pk %}"
+        hx-post="{% url 'notes:comment_delete' note.slug c.pk %}" hx-target="#comments" hx-swap="outerHTML show:none"
         data-confirm-delete class="flex items-baseline gap-2"
         onsubmit="return confirm('Delete this comment?')">
     {% csrf_token %}

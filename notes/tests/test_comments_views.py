@@ -41,6 +41,8 @@ class CommentThreadRenderingTests(CommentsBase):
         self.assertContains(r, 'id="comments"')
         self.assertContains(r, "No comments yet")
         self.assertContains(r, 'action="/talk/comments/"')
+        self.assertContains(r, 'hx-post="/talk/comments/"')
+        self.assertContains(r, 'hx-target="#comments"')
         self.assertContains(r, 'name="body"')
 
     def test_first_time_visitor_is_asked_for_a_name(self):
@@ -204,16 +206,39 @@ class CommentCreateTests(CommentsBase):
         self.assertEqual(r.status_code, 302)
         self.assertEqual(Comment.objects.count(), 1)
 
-    def test_creates_comment_and_redirects_to_it(self):
+    def test_creates_comment_without_a_scroll_fragment(self):
         r = self.post_comment(name="Ann", body="Hello there")
         c = Comment.objects.get()
         self.assertEqual(r.status_code, 302)
-        self.assertEqual(r["Location"], f"/talk/#comment-{c.pk}")
+        self.assertEqual(r["Location"], "/talk/")
         self.assertEqual(c.author_name, "Ann")
         self.assertEqual(c.body, "Hello there")
         self.assertIsNone(c.parent)
         self.assertFalse(c.is_owner)
         self.assertFalse(c.is_anchored)
+
+    def test_htmx_create_returns_updated_comment_rail(self):
+        r = self.client.post(
+            "/talk/comments/",
+            {"name": "Ann", "body": "Hello via HTMX"},
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="comments"')
+        self.assertContains(r, 'data-has-comments="true"')
+        self.assertContains(r, "Hello via HTMX")
+        self.assertNotContains(r, "<!doctype html>")
+
+    def test_htmx_validation_error_returns_form_fragment(self):
+        r = self.client.post(
+            "/talk/comments/",
+            {"name": "", "body": "Hello"},
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="comments"')
+        self.assertContains(r, "Please add your name.")
+        self.assertEqual(Comment.objects.count(), 0)
 
     def test_first_comment_remembers_name_and_issues_key(self):
         self.post_comment(name="Ann")
@@ -351,6 +376,15 @@ class CommentDeleteTests(CommentsBase):
         self.assertEqual(r.status_code, 302)
         self.assertEqual(r["Location"], "/talk/#comments")
         self.assertFalse(Comment.objects.filter(pk=self.mine.pk).exists())
+
+    def test_htmx_delete_returns_updated_comment_rail(self):
+        r = self.client.post(
+            f"/talk/comments/{self.mine.pk}/delete/", HTTP_HX_REQUEST="true"
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="comments"')
+        self.assertNotContains(r, "mine")
+        self.assertContains(r, "theirs")
 
     def test_commenter_cannot_delete_someone_elses_comment(self):
         r = self.client.post(f"/talk/comments/{self.other.pk}/delete/")

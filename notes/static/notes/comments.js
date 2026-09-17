@@ -181,11 +181,113 @@
     });
   }
 
+  // On desktop, place anchored threads beside their text. Comments that are
+  // close together are pushed down just enough to avoid overlapping.
+  var threadList = null;
+  var layoutFrame = null;
+  var threadObserver = null;
+  var watchingThreadResize = false;
+
+  function resetThreadLayout() {
+    if (!threadList) return;
+    threadList.classList.remove("is-positioned");
+    threadList.style.height = "";
+    threadList.querySelectorAll(":scope > li.comment-thread").forEach(function (thread) {
+      thread.style.top = "";
+    });
+  }
+
+  function alignThreads() {
+    layoutFrame = null;
+    if (!threadList) return;
+    if (!window.matchMedia("(min-width: 1200px)").matches) {
+      resetThreadLayout();
+      return;
+    }
+
+    var threads = Array.prototype.slice.call(
+      threadList.querySelectorAll(":scope > li.comment-thread")
+    );
+    if (!threads.length) return;
+
+    threadList.classList.add("is-positioned");
+    var listTop = threadList.getBoundingClientRect().top;
+    var items = threads.map(function (thread, index) {
+      var marks = marksFor(thread.dataset.commentId);
+      return {
+        thread: thread,
+        index: index,
+        anchored: marks.length > 0,
+        target: marks.length
+          ? Math.max(0, marks[0].getBoundingClientRect().top - listTop)
+          : 0,
+      };
+    });
+
+    items.sort(function (a, b) {
+      if (a.anchored !== b.anchored) return a.anchored ? 1 : -1;
+      return a.target - b.target || a.index - b.index;
+    });
+
+    var gap = parseFloat(window.getComputedStyle(document.documentElement).fontSize) * 0.5;
+    var cursor = 0;
+    items.forEach(function (item) {
+      var top = Math.max(cursor, item.target);
+      item.thread.style.top = top + "px";
+      cursor = top + item.thread.offsetHeight + gap;
+    });
+    threadList.style.height = Math.max(0, cursor - gap) + "px";
+  }
+
+  function scheduleThreadLayout() {
+    if (layoutFrame !== null) window.cancelAnimationFrame(layoutFrame);
+    layoutFrame = window.requestAnimationFrame(alignThreads);
+  }
+
+  function positionFloatingComposer() {
+    var composer = section && section.querySelector("[data-comment-composer].is-floating");
+    if (!composer) return;
+    var rail = section.getBoundingClientRect();
+    var selected = pendingMarks.length ? pendingMarks[0].getBoundingClientRect() : null;
+    var desiredTop = selected ? selected.top : 16;
+    var maxTop = Math.max(16, window.innerHeight - composer.offsetHeight - 16);
+    composer.style.left = rail.left + "px";
+    composer.style.width = rail.width + "px";
+    composer.style.top = Math.max(16, Math.min(desiredTop, maxTop)) + "px";
+  }
+
+  function watchThreadLayout() {
+    if (!threadList) return;
+    if (!watchingThreadResize) {
+      window.addEventListener("resize", function () {
+        scheduleThreadLayout();
+        positionFloatingComposer();
+      });
+      watchingThreadResize = true;
+    }
+    if (threadObserver) threadObserver.disconnect();
+    if (window.ResizeObserver) {
+      threadObserver = new ResizeObserver(function () {
+        scheduleThreadLayout();
+        positionFloatingComposer();
+      });
+      threadObserver.observe(body);
+      var composer = section.querySelector("[data-comment-composer]");
+      if (composer) threadObserver.observe(composer);
+      threadList.querySelectorAll(":scope > li.comment-thread").forEach(function (thread) {
+        threadObserver.observe(thread);
+      });
+    }
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(scheduleThreadLayout);
+    }
+  }
+
   // ---- the new-comment form ------------------------------------------------
 
-  var form = section.querySelector("form[data-comment-form]");
-  var chip = form && form.querySelector("[data-anchor-chip]");
-  var chipText = form && form.querySelector("[data-anchor-text]");
+  var form = null;
+  var chip = null;
+  var chipText = null;
   var pendingMarks = [];
 
   function field(name) {
@@ -207,7 +309,12 @@
     pendingMarks = highlight(sel.start, sel.end, "pending", "is-pending");
     var composer = form.closest("[data-comment-composer]");
     if (composer) composer.open = true;
-    form.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (window.matchMedia("(min-width: 1200px)").matches) {
+      composer.classList.add("is-floating");
+      positionFloatingComposer();
+    } else {
+      form.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
     var textarea = form.querySelector("textarea");
     if (textarea) textarea.focus({ preventScroll: true });
   }
@@ -217,6 +324,13 @@
     chip.hidden = true;
     unwrap(pendingMarks);
     pendingMarks = [];
+    var composer = form.closest("[data-comment-composer]");
+    if (composer) {
+      composer.classList.remove("is-floating");
+      composer.style.left = "";
+      composer.style.top = "";
+      composer.style.width = "";
+    }
   }
 
   // ---- selection popover ---------------------------------------------------
@@ -268,9 +382,12 @@
     popover.hidden = false;
     var r = sel.rect;
     var width = popover.offsetWidth;
-    var top = window.scrollY + r.top - popover.offsetHeight - 8;
-    if (r.top < popover.offsetHeight + 16) top = window.scrollY + r.bottom + 8;
-    var left = window.scrollX + r.left + r.width / 2 - width / 2;
+    var height = popover.offsetHeight;
+    var top = window.scrollY + r.top + (r.height - height) / 2;
+    var minTop = window.scrollY + 8;
+    var maxTop = window.scrollY + document.documentElement.clientHeight - height - 8;
+    top = Math.max(minTop, Math.min(top, maxTop));
+    var left = window.scrollX + r.right + 4;
     var maxLeft = window.scrollX + document.documentElement.clientWidth - width - 8;
     left = Math.max(window.scrollX + 8, Math.min(left, maxLeft));
     popover.style.top = top + "px";
@@ -305,6 +422,7 @@
   });
   window.addEventListener("scroll", function () {
     if (pending) showPopover(pending);
+    positionFloatingComposer();
   }, { passive: true });
 
   popover.addEventListener("mousedown", function (e) { e.preventDefault(); });
@@ -383,8 +501,31 @@
     });
   }
 
-  function preserveReplyScroll() {
-    var key = "note-reply-scroll:" + window.location.pathname;
+  function armEnterToSubmit() {
+    section.querySelectorAll('form textarea[name="body"]').forEach(function (textarea) {
+      textarea.addEventListener("keydown", function (event) {
+        if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+        event.preventDefault();
+        textarea.form.requestSubmit();
+      });
+    });
+  }
+
+  function armCommentComposer() {
+    var composer = section.querySelector("[data-comment-composer]");
+    if (!composer) return;
+
+    function syncComposerState() {
+      section.classList.toggle("is-adding-comment", composer.open);
+      if (!composer.open && composer.classList.contains("is-floating")) clearAnchor();
+    }
+
+    composer.addEventListener("toggle", syncComposerState);
+    syncComposerState();
+  }
+
+  function preserveCommentScroll() {
+    var key = "note-comment-scroll:" + window.location.pathname;
     var saved = window.sessionStorage.getItem(key);
     if (saved !== null) {
       window.sessionStorage.removeItem(key);
@@ -396,8 +537,9 @@
       }
     }
 
-    section.querySelectorAll('form input[name="parent"]').forEach(function (parent) {
-      parent.form.addEventListener("submit", function () {
+    section.querySelectorAll('form[action$="/comments/"]').forEach(function (commentForm) {
+      if (window.htmx && commentForm.hasAttribute("hx-post")) return;
+      commentForm.addEventListener("submit", function () {
         window.sessionStorage.setItem(key, String(window.scrollY));
       });
     });
@@ -443,30 +585,65 @@
     });
   }
 
-  // ---- boot ------------------------------------------------------------------
+  // ---- boot / HTMX reinitialization -----------------------------------------
 
-  armDeleteForms();
-  armReplyCards();
-  preserveReplyScroll();
-  armNameEditors();
-
-  resolveAll();
-
-  if (form && chip) {
-    form.querySelector("[data-anchor-clear]").addEventListener("click", clearAnchor);
-    if (field("quote").value) {
-      // Re-rendered after a failed submission: keep the selection visible.
-      showChip(field("quote").value);
-      var offset = parseInt(field("start_offset").value, 10);
-      var hit = Anchors.resolve(textOf(segments()), {
-        quote: field("quote").value,
-        prefix: field("prefix").value,
-        suffix: field("suffix").value,
-        offset: isNaN(offset) ? null : offset,
-      });
-      if (hit) pendingMarks = highlight(hit.start, hit.end, "pending", "is-pending");
+  function updateEmptyState() {
+    var hasComments = section.dataset.hasComments === "true";
+    var layout = section.closest(".note-comments-layout");
+    if (layout) layout.classList.toggle("note-comments-layout--empty", !hasComments);
+    var header = document.querySelector("[data-page-header-container]");
+    if (header && header.classList.contains("note-header-width--comments")) {
+      header.classList.toggle("note-header-width--empty", !hasComments);
     }
   }
+
+  function initializeSection() {
+    if (threadObserver) threadObserver.disconnect();
+    section = document.getElementById("comments");
+    if (!section) return;
+    threadList = section.querySelector("[data-comment-thread-list]");
+    form = section.querySelector("form[data-comment-form]");
+    chip = form && form.querySelector("[data-anchor-chip]");
+    chipText = form && form.querySelector("[data-anchor-text]");
+
+    unwrap(Array.prototype.slice.call(body.querySelectorAll("mark.comment-highlight")));
+    pendingMarks = [];
+
+    armDeleteForms();
+    armReplyCards();
+    armEnterToSubmit();
+    armCommentComposer();
+    preserveCommentScroll();
+    armNameEditors();
+    resolveAll();
+    watchThreadLayout();
+    scheduleThreadLayout();
+    updateEmptyState();
+
+    if (form && chip) {
+      form.querySelector("[data-anchor-clear]").addEventListener("click", clearAnchor);
+      if (field("quote").value) {
+        // Re-rendered after a failed submission: keep the selection visible.
+        showChip(field("quote").value);
+        var offset = parseInt(field("start_offset").value, 10);
+        var hit = Anchors.resolve(textOf(segments()), {
+          quote: field("quote").value,
+          prefix: field("prefix").value,
+          suffix: field("suffix").value,
+          offset: isNaN(offset) ? null : offset,
+        });
+        if (hit) pendingMarks = highlight(hit.start, hit.end, "pending", "is-pending");
+      }
+    }
+  }
+
+  initializeSection();
+
+  document.body.addEventListener("htmx:afterSwap", function (event) {
+    if (event.detail.target && event.detail.target.id === "comments") {
+      initializeSection();
+    }
+  });
 
   var target = /^#comment-(\d+)$/.exec(window.location.hash);
   if (target) flash(target[1]);

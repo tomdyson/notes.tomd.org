@@ -23,4 +23,5 @@
 
   refresh();
   setInterval(refresh, 60000);
+  document.body.addEventListener("htmx:afterSwap", refresh);
 })();

@@ -38,7 +38,8 @@
 <script src="{% static 'notes/task_toggle.js' %}"></script>
 {% endif %}
 {% if note.comments_enabled %}
+<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js" integrity="sha384-H5SrcfygHmAuTDZphMHqBJLc3FhssKjG7w/CeCpFReSfwBWDTKpkzPP8c+cLsK+V" crossorigin="anonymous"></script>
 <script src="{% static 'notes/anchors.js' %}"></script>
-<script src="{% static 'notes/comments.js' %}?v=comment-rail-6"></script>
+<script src="{% static 'notes/comments.js' %}?v=comment-rail-15"></script>
 {% endif %}
 {% endblock %}

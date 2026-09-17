@@ -489,6 +489,14 @@ def _view_context(request, note, comment_form=None):
     return context
 
 
+def _comments_fragment(request, note, form=None):
+    return render(
+        request,
+        "notes/comments.html",
+        {"note": note, **_comments_context(request, note, form)},
+    )
+
+
 def view_note(request, slug):
     note = get_object_or_404(Note, slug=slug)
     redirect_resp = _gate(request, note, f"/{slug}/")
@@ -509,6 +517,8 @@ def create_comment(request, slug):
         return HttpResponse("Too many comments. Try again in a minute.", status=429)
     form = CommentForm(request.POST, note=note, known_name=_commenter_name(request))
     if not form.is_valid():
+        if request.headers.get("HX-Request") == "true":
+            return _comments_fragment(request, note, form)
         return render(
             request, "notes/view.html", _view_context(request, note, form), status=400
         )
@@ -525,9 +535,9 @@ def create_comment(request, slug):
         comment.author_key = key
     comment.save()
     gate.record_attempt(request, slug, scope="comment")
-    if comment.parent_id:
-        return redirect(f"/{slug}/")
-    return redirect(f"/{slug}/#comment-{comment.pk}")
+    if request.headers.get("HX-Request") == "true":
+        return _comments_fragment(request, note)
+    return redirect(f"/{slug}/")
 
 
 @require_POST
@@ -543,6 +553,8 @@ def delete_comment(request, slug, pk):
     if not (request.user.is_authenticated or (key and comment.author_key == key)):
         return HttpResponseForbidden("You can only delete your own comments.")
     comment.delete()
+    if request.headers.get("HX-Request") == "true":
+        return _comments_fragment(request, note)
     return redirect(f"/{slug}/#comments")
 
 

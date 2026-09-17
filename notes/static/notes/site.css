@@ -157,6 +157,12 @@ h1, h2, h3, h4, h5, h6 {
 .comment-composer-icon {
   transition: transform 150ms ease;
 }
+.comment-thread-list {
+  transition: opacity 150ms ease;
+}
+.comment-rail.is-adding-comment .comment-thread-list {
+  opacity: 0.28;
+}
 
 @media (min-width: 1200px) {
   .note-header-width--comments {
@@ -185,6 +191,20 @@ h1, h2, h3, h4, h5, h6 {
   }
   .note-comments-layout .comment-rail [data-comment-quote] {
     display: none;
+  }
+  .note-comments-layout .comment-composer.is-floating {
+    position: fixed;
+    top: 1rem;
+    z-index: 5;
+  }
+  .comment-thread-list.is-positioned {
+    position: relative;
+  }
+  .comment-thread-list.is-positioned > .comment-thread {
+    position: absolute;
+    left: 0;
+    right: 0;
+    margin-top: 0 !important;
   }
 }
 
