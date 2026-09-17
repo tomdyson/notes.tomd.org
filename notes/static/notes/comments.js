@@ -21,6 +21,7 @@
 
   var MAX_QUOTE = 2000; // matches the server-side cap
   var CHIP_CHARS = 120;
+  var replyDismissArmed = false;
 
   // ---- text <-> DOM mapping ------------------------------------------------
 
@@ -499,6 +500,25 @@
         if (textarea) textarea.focus();
       });
     });
+
+    if (!replyDismissArmed) {
+      document.addEventListener("click", function (event) {
+        var openReply = section && section.querySelector("[data-reply-control][open]");
+        if (!openReply) return;
+        var thread = openReply.closest("li.comment-thread");
+        if (thread && !thread.contains(event.target)) openReply.open = false;
+      });
+      document.addEventListener("keydown", function (event) {
+        if (event.key !== "Escape" || !section) return;
+        var openReplies = section.querySelectorAll("[data-reply-control][open]");
+        if (!openReplies.length) return;
+        event.preventDefault();
+        var thread = openReplies[0].closest("li.comment-thread");
+        openReplies.forEach(function (details) { details.open = false; });
+        if (thread) thread.focus({ preventScroll: true });
+      });
+      replyDismissArmed = true;
+    }
   }
 
   function armEnterToSubmit() {
