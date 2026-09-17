@@ -11,6 +11,23 @@ h1, h2, h3, h4, h5, h6 {
   color: #4A443C;
 }
 
+.copy-link-button {
+  transition: color 150ms ease;
+}
+.copy-link-button [data-copy-icon] {
+  display: inline-block;
+  transition: transform 150ms ease;
+}
+.copy-link-button[data-copy-state="success"] {
+  color: #15803d;
+}
+.copy-link-button[data-copy-state="success"] [data-copy-icon] {
+  transform: scale(1.2);
+}
+.copy-link-button[data-copy-state="error"] {
+  color: #b91c1c;
+}
+
 .note-body {
   line-height: 1.65;
   word-wrap: break-word;

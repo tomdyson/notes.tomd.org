@@ -79,12 +79,11 @@ prod container — it already has production settings in its environment.
   (challenge) lives in the session; `Passkey` rows belong to a user and
   store `credential_id`, `public_key`, `sign_count`.
 - **Layout width: `container_class` template variable.** `base.html`'s header
-  nav and main wrapper both render `{{ container_class|default:"max-w-3xl" }}`
-  so they line up on every page. Views that need a wider shell (currently
-  only the editor, which uses `max-w-6xl` so its markdown pane lines up with
-  the fixed footer below) pass `container_class="max-w-6xl"` in the context.
-  Don't reintroduce per-template `max-w-*` wrappers inside content blocks —
-  put the class on the view's context instead.
+  nav and main wrapper both render `{{ container_class|default:"max-w-4xl" }}`
+  so they line up on every page. The editor also passes
+  `container_class="max-w-4xl"` so its markdown pane lines up with the fixed
+  footer below. Don't reintroduce per-template `max-w-*` wrappers inside
+  content blocks — put the class on the view's context instead.
 - **Editor settings live in the footer, outside `<form>`.** Title, slug and
   password render in `{% block after_main %}` — a slot defined in `base.html`
   that sits *outside* the constrained `<main>` so a fixed, full-width footer

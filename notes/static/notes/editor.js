@@ -116,6 +116,35 @@
     });
   }
 
+  // Briefly confirm that the public note URL reached the clipboard.
+  const copyLinkButton = document.querySelector("[data-copy-link]");
+  if (copyLinkButton) {
+    const copyIcon = copyLinkButton.querySelector("[data-copy-icon]");
+    const copyLabel = copyLinkButton.querySelector("[data-copy-label]");
+    let copyResetTimer = null;
+
+    copyLinkButton.addEventListener("click", async function () {
+      if (copyResetTimer) clearTimeout(copyResetTimer);
+      try {
+        const url = new URL(copyLinkButton.dataset.copyUrl, window.location.origin);
+        await navigator.clipboard.writeText(url.href);
+        copyLinkButton.dataset.copyState = "success";
+        if (copyIcon) copyIcon.textContent = "✓";
+        if (copyLabel) copyLabel.textContent = "Copied";
+      } catch (_) {
+        copyLinkButton.dataset.copyState = "error";
+        if (copyIcon) copyIcon.textContent = "!";
+        if (copyLabel) copyLabel.textContent = "Copy failed";
+      }
+
+      copyResetTimer = setTimeout(function () {
+        delete copyLinkButton.dataset.copyState;
+        if (copyIcon) copyIcon.textContent = "⧉";
+        if (copyLabel) copyLabel.textContent = "Copy link";
+      }, 1800);
+    });
+  }
+
   // --- Image upload (paste / drop) ---
   function getCsrfToken() {
     const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);

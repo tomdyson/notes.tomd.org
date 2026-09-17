@@ -383,7 +383,7 @@ def new_note(request):
     return render(
         request,
         "notes/editor.html",
-        {"form": form, "note": None, "container_class": "max-w-6xl"},
+        {"form": form, "note": None, "container_class": "max-w-4xl"},
     )
 
 
@@ -400,7 +400,7 @@ def edit_note(request, slug):
     return render(
         request,
         "notes/editor.html",
-        {"form": form, "note": note, "container_class": "max-w-6xl"},
+        {"form": form, "note": note, "container_class": "max-w-4xl"},
     )
 
 
