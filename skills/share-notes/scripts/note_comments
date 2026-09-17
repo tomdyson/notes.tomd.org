@@ -1,0 +1,11 @@
+#!/bin/zsh
+
+set -eu
+
+# Codex command runners can be non-interactive. Load the login environment only
+# for this process so credentials do not need to live in .zshenv.
+if [[ -r "$HOME/.zprofile" ]]; then
+    source "$HOME/.zprofile"
+fi
+
+exec python3 "${0:A:h}/note_comments.py" "$@"

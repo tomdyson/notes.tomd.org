@@ -57,6 +57,7 @@ and the bundled note-sharing skill client.
 | `/login/` | anon | Django login; also exposes passkey login |
 | `/new/` | authed | Editor for a new note |
 | `/api/v1/notes` | bearer token | POST JSON to create and share a note |
+| `/api/v1/notes/<slug>/comments[/<id>]` | bearer token | List, post and delete comments |
 | `/upload/` | authed | POST-only image upload (multipart), returns JSON `{url, markdown}` |
 | `/i/<short_id>.webp` | public | Serve a stored image |
 | `/<slug>/` | public | Rendered note (password-gated if set) |
@@ -104,16 +105,48 @@ curl https://notes.tomd.org/api/v1/notes \
   --data '{"title":"Example","markdown":"# Hello"}'
 ```
 
-Accepted JSON fields are `markdown` (required), `title`, `slug`, and
-`password`. A successful response includes `url`, `raw_url`, timestamps, and
-whether the note is password-protected. Notes without a password are
+Accepted JSON fields are `markdown` (required), `title`, `slug`, `password`,
+and `comments_enabled` (boolean, default false). A successful response
+includes `url`, `raw_url`, timestamps, and whether the note is
+password-protected and open to comments. Notes without a password are
 accessible to anyone who has or discovers their URL. Requests default to a
 1 MiB limit; override it with `NOTE_API_MAX_REQUEST_BYTES` if needed.
+
+### Comments
+
+| Request | Scope | Does |
+| --- | --- | --- |
+| `GET /api/v1/notes/<slug>/comments` | `comments:read` | Lists threads with nested `replies` and each thread's `anchor` |
+| `POST /api/v1/notes/<slug>/comments` | `comments:write` | Posts a comment as the note's owner (`is_owner`, "author" badge) |
+| `DELETE /api/v1/notes/<slug>/comments/<id>` | `comments:write` | Deletes a comment and its replies; returns 204 |
+
+The token acts as the owner, so reads ignore the note's password and work even
+when comments are switched off. Posting to a note with comments off returns
+`409 comments_disabled`. `POST` accepts `body` (required), `parent` (id of a
+top-level comment, for a reply), `author_name`, and the anchor fields `quote`,
+`prefix`, `suffix`, `start_offset`; it honours `Idempotency-Key` like note
+creation. A `quote` must be the words as rendered on the page, not Markdown
+source. Anchors are resolved in the reader's browser, so the API only reports
+`anchor.quote_in_note`: whether the quote currently appears verbatim in the
+note's rendered text.
+
+Tokens are created with `notes:create` only. Grant comment access when issuing
+a token, or to an existing one by its prefix (shown in Django admin) without
+changing the secret:
+
+```sh
+python manage.py create_note_api_token --username tom --name Agent \
+  --scopes "notes:create comments:read comments:write"
+python manage.py set_note_api_token_scopes --prefix nt_AbCdEf123 \
+  --scopes "notes:create comments:read comments:write"
+```
 
 The version-controlled personal skill is in `skills/share-notes/` and is also
 installed at `~/.codex/skills/share-notes/` on this machine. It triggers only
 on explicit sharing/publication requests and invokes its deterministic Python
-client, which uses the API's idempotency support for safe retries.
+client, which uses the API's idempotency support for safe retries. Its
+`note_comments` script lists, posts, replies to and deletes comments through
+the endpoints above.
 
 ## Deployment
 
@@ -219,7 +252,8 @@ fly.toml          legacy Fly config — unused since the move to Coolify
 - Password hashes use Django's `make_password`/`check_password`; raw values
   never stored.
 - Note API bearer tokens are high-entropy, stored only as SHA-256 digests,
-  scoped to note creation, revocable, and never accepted from query strings.
+  scoped (`notes:create`, `comments:read`, `comments:write`; note creation
+  only by default), revocable, and never accepted from query strings.
 - Unlock throttle: 3 wrong attempts per `(IP, slug, minute)` → 429.
 - WebAuthn RP ID is hardcoded to `notes.tomd.org` in `noteserver/settings.py`
   — passkeys registered in prod will not work against any other hostname

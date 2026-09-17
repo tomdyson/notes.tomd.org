@@ -7,6 +7,16 @@ app_name = "notes"
 urlpatterns = [
     path("", views.home, name="home"),
     path("api/v1/notes", views.api_create_note, name="api_create_note"),
+    path(
+        "api/v1/notes/<slug:slug>/comments",
+        views.api_note_comments,
+        name="api_note_comments",
+    ),
+    path(
+        "api/v1/notes/<slug:slug>/comments/<int:pk>",
+        views.api_note_comment,
+        name="api_note_comment",
+    ),
     path("new/", views.new_note, name="new"),
     path("upload/", views.upload_image, name="image_upload"),
     path("i/<slug:short_id>.webp", views.serve_image, name="image_serve"),

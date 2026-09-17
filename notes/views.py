@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import secrets
+from html import unescape
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
@@ -15,6 +16,7 @@ from django.http import (
     JsonResponse,
 )
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.html import strip_tags
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
@@ -60,31 +62,45 @@ def _note_api_response(request, note):
         "url": request.build_absolute_uri(f"/{note.slug}/"),
         "raw_url": request.build_absolute_uri(f"/{note.slug}/raw"),
         "password_protected": note.has_password,
+        "comments_enabled": note.comments_enabled,
         "created_at": note.created_at.isoformat(),
         "updated_at": note.updated_at.isoformat(),
     }
 
 
-@csrf_exempt
-@require_POST
-def api_create_note(request):
+def _api_token_or_error(request, scope):
+    """Authenticate the bearer token and check it carries ``scope``."""
     token = _authenticate_note_api(request)
     if token is None:
         response = _api_error(
             "unauthorized", "A valid bearer token is required.", status=401
         )
         response["WWW-Authenticate"] = "Bearer"
-        return response
+        return None, response
     token.mark_used()
-    if not token.permits("notes:create"):
-        return _api_error(
+    if not token.permits(scope):
+        return None, _api_error(
             "insufficient_scope",
-            "The token does not have the notes:create scope.",
+            f"The token does not have the {scope} scope.",
             status=403,
         )
+    return token, None
 
+
+def _api_method_not_allowed(*allowed):
+    response = _api_error(
+        "method_not_allowed",
+        f"Use {' or '.join(allowed)} on this endpoint.",
+        status=405,
+    )
+    response["Allow"] = ", ".join(allowed)
+    return response
+
+
+def _json_object_or_error(request):
+    """Parse a size-limited JSON object request body."""
     if request.content_type != "application/json":
-        return _api_error(
+        return None, _api_error(
             "unsupported_media_type",
             "Content-Type must be application/json.",
             status=415,
@@ -95,7 +111,7 @@ def api_create_note(request):
     except ValueError:
         content_length = 0
     if content_length > max_request_bytes:
-        return _api_error(
+        return None, _api_error(
             "request_too_large",
             f"The request body must be {max_request_bytes} bytes or fewer.",
             status=413,
@@ -103,11 +119,11 @@ def api_create_note(request):
     try:
         raw_body = request.body
     except RequestDataTooBig:
-        return _api_error(
+        return None, _api_error(
             "request_too_large", "The request body is too large.", status=413
         )
     if len(raw_body) > max_request_bytes:
-        return _api_error(
+        return None, _api_error(
             "request_too_large",
             f"The request body must be {max_request_bytes} bytes or fewer.",
             status=413,
@@ -115,19 +131,118 @@ def api_create_note(request):
     try:
         payload = json.loads(raw_body)
     except (json.JSONDecodeError, UnicodeDecodeError):
-        return _api_error("invalid_json", "The request body is not valid JSON.", status=400)
-    if not isinstance(payload, dict):
-        return _api_error("invalid_json", "The JSON body must be an object.", status=400)
-
-    allowed_fields = {"title", "markdown", "slug", "password"}
-    unknown_fields = sorted(set(payload) - allowed_fields)
-    if unknown_fields:
-        return _api_error(
-            "unknown_fields",
-            "The request contains unsupported fields.",
-            status=400,
-            fields=unknown_fields,
+        return None, _api_error(
+            "invalid_json", "The request body is not valid JSON.", status=400
         )
+    if not isinstance(payload, dict):
+        return None, _api_error(
+            "invalid_json", "The JSON body must be an object.", status=400
+        )
+    return payload, None
+
+
+def _unknown_fields_error(payload, allowed_fields):
+    unknown_fields = sorted(set(payload) - allowed_fields)
+    if not unknown_fields:
+        return None
+    return _api_error(
+        "unknown_fields",
+        "The request contains unsupported fields.",
+        status=400,
+        fields=unknown_fields,
+    )
+
+
+def _invalid_field(message):
+    return [{"message": message, "code": "invalid"}]
+
+
+def _validation_error(fields):
+    return _api_error(
+        "validation_error", "One or more fields are invalid.", status=422, fields=fields
+    )
+
+
+def _idempotency_key_or_error(request):
+    key = request.headers.get("Idempotency-Key", "").strip()
+    if len(key) > 200:
+        return None, _api_error(
+            "invalid_idempotency_key",
+            "Idempotency-Key must be 200 characters or fewer.",
+            status=400,
+        )
+    return key, None
+
+
+def _request_digest(material) -> str:
+    canonical = json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    # Key the digest so a database leak cannot be used to test guesses for a
+    # password included in an idempotent request.
+    return hmac.new(
+        settings.SECRET_KEY.encode("utf-8"), canonical, hashlib.sha256
+    ).hexdigest()
+
+
+def _idempotent_replay(token, key, digest):
+    """The stored response for a repeated key, a conflict, or None if unseen."""
+    if not key:
+        return None
+    existing = NoteApiIdempotencyRecord.objects.filter(token=token, key=key).first()
+    if existing is None:
+        return None
+    if existing.request_digest != digest:
+        return _api_error(
+            "idempotency_conflict",
+            "This idempotency key was already used with different input.",
+            status=409,
+        )
+    response = JsonResponse(existing.response_body, status=200)
+    response["Idempotent-Replay"] = "true"
+    return response
+
+
+def _create_idempotently(token, key, digest, create):
+    """Run ``create() -> (note, response_body)`` at most once per key."""
+    replay = _idempotent_replay(token, key, digest)
+    if replay is not None:
+        return replay
+    try:
+        with transaction.atomic():
+            note, response_body = create()
+            if key:
+                NoteApiIdempotencyRecord.objects.create(
+                    token=token,
+                    key=key,
+                    request_digest=digest,
+                    response_body=response_body,
+                    note=note,
+                )
+    except IntegrityError:
+        # A concurrent retry can win the unique idempotency-key race. The
+        # transaction above rolls back its duplicate before we replay it.
+        if not key:
+            raise
+        replay = _idempotent_replay(token, key, digest)
+        if replay is not None:
+            return replay
+        raise
+    return JsonResponse(response_body, status=201)
+
+
+@csrf_exempt
+@require_POST
+def api_create_note(request):
+    token, error = _api_token_or_error(request, "notes:create")
+    if error:
+        return error
+    payload, error = _json_object_or_error(request)
+    if error:
+        return error
+    error = _unknown_fields_error(
+        payload, {"title", "markdown", "slug", "password", "comments_enabled"}
+    )
+    if error:
+        return error
 
     normalized = {}
     for field in ("title", "slug", "password"):
@@ -135,108 +250,188 @@ def api_create_note(request):
         if value is None:
             value = ""
         if not isinstance(value, str):
-            return _api_error(
-                "validation_error",
-                "One or more fields are invalid.",
-                status=422,
-                fields={field: [{"message": "Must be a string.", "code": "invalid"}]},
-            )
+            return _validation_error({field: _invalid_field("Must be a string.")})
         normalized[field] = value
 
     markdown = payload.get("markdown")
     if not isinstance(markdown, str):
-        return _api_error(
-            "validation_error",
-            "One or more fields are invalid.",
-            status=422,
-            fields={"markdown": [{"message": "Must be a string.", "code": "invalid"}]},
-        )
+        return _validation_error({"markdown": _invalid_field("Must be a string.")})
     normalized["markdown"] = markdown
+    comments_enabled = payload.get("comments_enabled", False)
+    if not isinstance(comments_enabled, bool):
+        return _validation_error(
+            {"comments_enabled": _invalid_field("Must be true or false.")}
+        )
+    normalized["comments_enabled"] = comments_enabled
     if len(normalized["password"]) > 128:
-        return _api_error(
-            "validation_error",
-            "One or more fields are invalid.",
-            status=422,
-            fields={
+        return _validation_error(
+            {
                 "password": [
                     {"message": "Must be 128 characters or fewer.", "code": "max_length"}
                 ]
-            },
+            }
         )
 
-    idempotency_key = request.headers.get("Idempotency-Key", "").strip()
-    if len(idempotency_key) > 200:
-        return _api_error(
-            "invalid_idempotency_key",
-            "Idempotency-Key must be 200 characters or fewer.",
-            status=400,
-        )
-    canonical_payload = json.dumps(
-        payload, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
-    # Key the digest so a database leak cannot be used to test guesses for a
-    # password included in an idempotent request.
-    request_digest = hmac.new(
-        settings.SECRET_KEY.encode("utf-8"), canonical_payload, hashlib.sha256
-    ).hexdigest()
-
-    if idempotency_key:
-        existing = NoteApiIdempotencyRecord.objects.filter(
-            token=token, key=idempotency_key
-        ).first()
-        if existing:
-            if existing.request_digest != request_digest:
-                return _api_error(
-                    "idempotency_conflict",
-                    "This idempotency key was already used with different input.",
-                    status=409,
-                )
-            response = JsonResponse(existing.response_body, status=200)
-            response["Idempotent-Replay"] = "true"
-            return response
+    idempotency_key, error = _idempotency_key_or_error(request)
+    if error:
+        return error
+    request_digest = _request_digest(payload)
+    replay = _idempotent_replay(token, idempotency_key, request_digest)
+    if replay is not None:
+        return replay
 
     form = NoteForm({**normalized, "clear_password": False})
     if not form.is_valid():
-        return _api_error(
-            "validation_error",
-            "One or more fields are invalid.",
-            status=422,
-            fields=form.errors.get_json_data(escape_html=True),
+        return _validation_error(form.errors.get_json_data(escape_html=True))
+
+    def create():
+        note = form.save()
+        return note, _note_api_response(request, note)
+
+    return _create_idempotently(token, idempotency_key, request_digest, create)
+
+
+def _note_text(note) -> str:
+    """Best-effort rendered text of a note, used only to tell API clients
+    whether a quote still appears in it. Real anchoring happens in the browser."""
+    return unescape(strip_tags(note.html))
+
+
+def _comment_api_json(request, note, comment, note_text, replies=()):
+    data = {
+        "id": comment.pk,
+        "parent": comment.parent_id,
+        "author_name": comment.author_name,
+        "is_owner": comment.is_owner,
+        "body": comment.body,
+        "created_at": comment.created_at.isoformat(),
+        "url": request.build_absolute_uri(f"/{note.slug}/#comment-{comment.pk}"),
+    }
+    if comment.parent_id is None:
+        data["anchor"] = (
+            {
+                "quote": comment.quote,
+                "prefix": comment.prefix,
+                "suffix": comment.suffix,
+                "start_offset": comment.start_offset,
+                "quote_in_note": comment.quote in note_text,
+            }
+            if comment.is_anchored
+            else None
+        )
+        data["replies"] = [
+            _comment_api_json(request, note, reply, note_text) for reply in replies
+        ]
+    return data
+
+
+def _comment_form_data_or_error(payload):
+    """Type-check the JSON comment payload into CommentForm data."""
+    errors = {}
+    data = {}
+    for field in ("body", "quote", "prefix", "suffix", "author_name"):
+        value = payload.get(field)
+        if value is None:
+            value = ""
+        if not isinstance(value, str):
+            errors[field] = _invalid_field("Must be a string.")
+        data[field] = value
+    for field in ("parent", "start_offset"):
+        value = payload.get(field)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
+            errors[field] = _invalid_field("Must be an integer.")
+        data[field] = "" if value is None else value
+    if errors:
+        return None, _validation_error(errors)
+    data["name"] = data.pop("author_name")
+    return data, None
+
+
+@csrf_exempt
+def api_note_comments(request, slug):
+    """GET lists a note's comment threads; POST adds a comment as the owner."""
+    if request.method not in ("GET", "POST"):
+        return _api_method_not_allowed("GET", "POST")
+    scope = "comments:read" if request.method == "GET" else "comments:write"
+    token, error = _api_token_or_error(request, scope)
+    if error:
+        return error
+    note = Note.objects.filter(slug=slug).first()
+    if note is None:
+        return _api_error("not_found", "No note has that slug.", status=404)
+
+    if request.method == "GET":
+        note_text = _note_text(note)
+        threads = note.comments.filter(parent__isnull=True).prefetch_related("replies")
+        return JsonResponse(
+            {
+                "note": _note_api_response(request, note),
+                "comments": [
+                    _comment_api_json(
+                        request, note, thread, note_text, replies=thread.replies.all()
+                    )
+                    for thread in threads
+                ],
+            }
         )
 
-    try:
-        with transaction.atomic():
-            note = form.save()
-            response_body = _note_api_response(request, note)
-            if idempotency_key:
-                NoteApiIdempotencyRecord.objects.create(
-                    token=token,
-                    key=idempotency_key,
-                    request_digest=request_digest,
-                    response_body=response_body,
-                    note=note,
-                )
-    except IntegrityError:
-        # A concurrent retry can win the unique idempotency-key race. The
-        # transaction above rolls back its duplicate note before we replay it.
-        if not idempotency_key:
-            raise
-        existing = NoteApiIdempotencyRecord.objects.filter(
-            token=token, key=idempotency_key
-        ).first()
-        if existing and existing.request_digest == request_digest:
-            response = JsonResponse(existing.response_body, status=200)
-            response["Idempotent-Replay"] = "true"
-            return response
-        if existing:
-            return _api_error(
-                "idempotency_conflict",
-                "This idempotency key was already used with different input.",
-                status=409,
-            )
-        raise
+    payload, error = _json_object_or_error(request)
+    if error:
+        return error
+    error = _unknown_fields_error(
+        payload,
+        {"body", "parent", "quote", "prefix", "suffix", "start_offset", "author_name"},
+    )
+    if error:
+        return error
+    if not note.comments_enabled:
+        return _api_error(
+            "comments_disabled", "Comments are turned off for this note.", status=409
+        )
+    data, error = _comment_form_data_or_error(payload)
+    if error:
+        return error
 
-    return JsonResponse(response_body, status=201)
+    idempotency_key, error = _idempotency_key_or_error(request)
+    if error:
+        return error
+    request_digest = _request_digest(
+        {"endpoint": "comments", "slug": slug, "payload": payload}
+    )
+    replay = _idempotent_replay(token, idempotency_key, request_digest)
+    if replay is not None:
+        return replay
+
+    form = CommentForm(data, note=note, known_name=_account_name(token.user))
+    if not form.is_valid():
+        fields = form.errors.get_json_data(escape_html=True)
+        if "name" in fields:
+            fields["author_name"] = fields.pop("name")
+        return _validation_error(fields)
+
+    def create():
+        comment = form.save(commit=False)
+        comment.note = note
+        comment.is_owner = True
+        comment.save()
+        return note, _comment_api_json(request, note, comment, _note_text(note))
+
+    return _create_idempotently(token, idempotency_key, request_digest, create)
+
+
+@csrf_exempt
+def api_note_comment(request, slug, pk):
+    """DELETE removes one comment (and its replies) for moderation."""
+    if request.method != "DELETE":
+        return _api_method_not_allowed("DELETE")
+    token, error = _api_token_or_error(request, "comments:write")
+    if error:
+        return error
+    comment = Comment.objects.filter(pk=pk, note__slug=slug).first()
+    if comment is None:
+        return _api_error("not_found", "No such comment on that note.", status=404)
+    comment.delete()
+    return HttpResponse(status=204)
 
 
 def _gate(request, note, next_url):
@@ -245,9 +440,13 @@ def _gate(request, note, next_url):
     return None
 
 
+def _account_name(user) -> str:
+    return user.get_full_name() or user.get_username()
+
+
 def _commenter_name(request) -> str:
     if request.user.is_authenticated:
-        return request.user.get_full_name() or request.user.get_username()
+        return _account_name(request.user)
     return request.session.get("commenter_name", "")
 
 

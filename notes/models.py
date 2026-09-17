@@ -130,11 +130,24 @@ class NoteApiToken(models.Model):
     last_used_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
 
+    KNOWN_SCOPES = ("notes:create", "comments:read", "comments:write")
+
     class Meta:
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
         return f"{self.name} ({self.prefix}…)"
+
+    @classmethod
+    def normalize_scopes(cls, scopes: str) -> str:
+        """Validate a space-separated scope string and drop duplicates."""
+        requested = list(dict.fromkeys((scopes or "").split()))
+        unknown = [scope for scope in requested if scope not in cls.KNOWN_SCOPES]
+        if unknown:
+            raise ValueError(f"Unknown scope(s): {', '.join(unknown)}.")
+        if not requested:
+            raise ValueError("At least one scope is required.")
+        return " ".join(requested)
 
     @staticmethod
     def digest(secret: str) -> str:

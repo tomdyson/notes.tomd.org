@@ -38,6 +38,11 @@ def parse_args(argv=None):
         help="Read an optional note password from environment variable NAME.",
     )
     parser.add_argument(
+        "--comments",
+        action="store_true",
+        help="Let readers comment on the published note.",
+    )
+    parser.add_argument(
         "--api-url",
         help="Override NOTES_TOMD_API_URL for local testing.",
     )
@@ -49,17 +54,22 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def read_markdown(source):
+def read_input(source, label):
+    """Read text from a file, or stdin when source is "-"."""
     if source == "-":
-        markdown = sys.stdin.read()
+        text = sys.stdin.read()
     else:
         try:
-            markdown = Path(source).read_text(encoding="utf-8")
+            text = Path(source).read_text(encoding="utf-8")
         except OSError as exc:
-            raise ShareNoteError(f"Could not read Markdown file: {exc}") from exc
-    if not markdown.strip():
-        raise ShareNoteError("Markdown input is empty.")
-    return markdown
+            raise ShareNoteError(f"Could not read {label} file: {exc}") from exc
+    if not text.strip():
+        raise ShareNoteError(f"{label} input is empty.")
+    return text
+
+
+def read_markdown(source):
+    return read_input(source, "Markdown")
 
 
 def error_message(body, fallback):
@@ -73,24 +83,27 @@ def error_message(body, fallback):
     return fallback
 
 
-def publish(*, api_url, token, payload, idempotency_key, timeout, attempts=3):
-    body = json.dumps(payload).encode("utf-8")
-    request = Request(
-        api_url,
-        data=body,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "Idempotency-Key": idempotency_key,
-            "User-Agent": "notes.tomd.org-share-skill/1",
-        },
-    )
+def api_request(
+    method, url, *, token, payload=None, idempotency_key=None, timeout=30.0, attempts=3
+):
+    """Call the notes API and return its JSON response ({} when it has no body)."""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "User-Agent": "notes.tomd.org-share-skill/1",
+    }
+    body = None
+    if payload is not None:
+        body = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
+    request = Request(url, data=body, method=method, headers=headers)
 
     for attempt in range(attempts):
         try:
             with urlopen(request, timeout=timeout) as response:
-                return json.loads(response.read().decode("utf-8"))
+                raw = response.read()
+                return json.loads(raw.decode("utf-8")) if raw.strip() else {}
         except HTTPError as exc:
             response_body = exc.read().decode("utf-8", errors="replace")
             if exc.code in RETRYABLE_STATUSES and attempt + 1 < attempts:
@@ -110,6 +123,18 @@ def publish(*, api_url, token, payload, idempotency_key, timeout, attempts=3):
     raise ShareNoteError("The notes API request failed.")
 
 
+def publish(*, api_url, token, payload, idempotency_key, timeout, attempts=3):
+    return api_request(
+        "POST",
+        api_url,
+        token=token,
+        payload=payload,
+        idempotency_key=idempotency_key,
+        timeout=timeout,
+        attempts=attempts,
+    )
+
+
 def main(argv=None):
     args = parse_args(argv)
     token = os.environ.get("NOTES_TOMD_TOKEN", "").strip()
@@ -127,6 +152,8 @@ def main(argv=None):
                 f"Password environment variable {args.password_env} is not configured."
             )
         payload["password"] = os.environ[args.password_env]
+    if args.comments:
+        payload["comments_enabled"] = True
 
     result = publish(
         api_url=args.api_url

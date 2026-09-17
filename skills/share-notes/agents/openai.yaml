@@ -1,4 +1,4 @@
 interface:
   display_name: "Share Notes"
-  short_description: "Publish Markdown to notes.tomd.org"
+  short_description: "Publish notes and manage comments on notes.tomd.org"
   default_prompt: "Use $share-notes to publish this as a shareable Markdown note."

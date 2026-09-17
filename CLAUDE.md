@@ -13,7 +13,7 @@ Deployment below.)
 
 ## Commands
 
-- Run tests: `python manage.py test notes` (279 tests, ~20s; the anchoring JS tests need `node`
+- Run tests: `python manage.py test notes` (334 tests, ~25s; the anchoring JS tests need `node`
   on PATH and are skipped without it)
 - Run a single test: `python manage.py test notes.tests.test_rendering.RenderMarkdownTests.test_strips_script_tags`
 - Dev server: `DEBUG=1 python manage.py runserver`
@@ -38,7 +38,9 @@ prod container — it already has production settings in its environment.
   `test_passkey_register`, `test_passkey_login`, `test_images_model`,
   `test_image_pipeline`, `test_image_rejection`, `test_image_gc`,
   `test_upload`, `test_comments_model`, `test_comments_views`,
-  `test_comments_js` (runs `node --test notes/tests/js/anchors.test.mjs`). Django's built-in `TestCase` — not pytest.
+  `test_comments_js` (runs `node --test notes/tests/js/anchors.test.mjs`),
+  `test_api`, `test_api_comments`, `test_share_note_skill`,
+  `test_note_comments_skill`. Django's built-in `TestCase` — not pytest.
 - Don't add new abstractions without a test that motivates them.
 
 ## Architecture gotchas
@@ -117,6 +119,20 @@ prod container — it already has production settings in its environment.
   Don't put Tailwind display utilities (`flex`, `inline-block`) on elements
   toggled with the `hidden` attribute — the utility wins and the element
   shows.
+
+- **The comments API acts as the owner, not as a visitor.**
+  `api_note_comments` (GET/POST) and `api_note_comment` (DELETE) sit behind
+  the `comments:read` / `comments:write` token scopes and deliberately skip
+  `_gate`, the visitor rate limit and the session identity: API comments are
+  saved with `is_owner=True`. POST still refuses when `comments_enabled` is
+  off (409) and validates through the same `CommentForm`. New API endpoints
+  should reuse the helpers in `views.py` (`_api_token_or_error`,
+  `_json_object_or_error`, `_create_idempotently`) rather than re-implementing
+  auth, size limits or idempotency. `quote_in_note` in responses is an
+  advisory substring check on stripped HTML — it is not anchoring, which
+  stays in the browser. New scopes go in `NoteApiToken.KNOWN_SCOPES`; tokens
+  default to `notes:create` only. The `skills/share-notes/` scripts are the
+  API's main client — keep `SKILL.md` and the README in step with API changes.
 
 ## SQLite on a volume — critical
 
