@@ -2,6 +2,7 @@
 {% load static %}
 {% block title %}{{ note.title|default:note.slug }}{% endblock %}
 {% block content %}
+<div class="{% if note.comments_enabled %}note-comments-layout{% if not comment_threads %} note-comments-layout--empty{% endif %}{% endif %}">
 <article class="bg-white border border-stone-200 shadow-sm rounded-lg p-8 sm:p-10">
   {% if note.title %}<h1 class="font-serif text-3xl mb-6">{{ note.title }}</h1>{% endif %}
   <div class="prose prose-stone max-w-none note-body"
@@ -10,7 +11,8 @@
   </div>
   {% if user.is_authenticated %}{% csrf_token %}{% endif %}
   <footer class="mt-8 pt-4 border-t border-stone-100 text-xs text-stone-500 flex items-center justify-between">
-    <span>Updated {{ note.updated_at|date:"Y-m-d H:i" }}</span>
+    <span>Updated <time datetime="{{ note.updated_at|date:'c' }}" data-relative-time
+                        title="{{ note.updated_at|date:'Y-m-d H:i T' }}">{{ note.updated_at|date:"Y-m-d H:i" }}</time></span>
     <span class="flex gap-3">
       <a href="/{{ note.slug }}/raw" class="hover:text-stone-800">raw</a>
       {% if user.is_authenticated %}
@@ -20,8 +22,10 @@
   </footer>
 </article>
 {% include "notes/comments.html" %}
+</div>
 {% endblock %}
 {% block body_extra %}
+<script src="{% static 'notes/relative_time.js' %}?v=1"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <script>
   document.addEventListener("DOMContentLoaded", function () {
@@ -35,6 +39,6 @@
 {% endif %}
 {% if note.comments_enabled %}
 <script src="{% static 'notes/anchors.js' %}"></script>
-<script src="{% static 'notes/comments.js' %}"></script>
+<script src="{% static 'notes/comments.js' %}?v=comment-rail-5"></script>
 {% endif %}
 {% endblock %}

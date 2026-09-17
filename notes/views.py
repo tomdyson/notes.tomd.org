@@ -476,6 +476,7 @@ def _comments_context(request, note, form=None):
 def _view_context(request, note, comment_form=None):
     context = {"note": note}
     if note.comments_enabled:
+        context["container_class"] = "max-w-7xl"
         context.update(_comments_context(request, note, comment_form))
     return context
 

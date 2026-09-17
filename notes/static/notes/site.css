@@ -1,5 +1,5 @@
 body {
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-family: "Karla", system-ui, -apple-system, sans-serif;
   background-color: #FBF9F6;
   background-image: repeating-linear-gradient(-45deg, #F5F1EB 0, #F5F1EB 1px, transparent 0, transparent 50%);
   background-size: 10px 10px;
@@ -132,6 +132,52 @@ h1, h2, h3, h4, h5, h6 {
   transform: translateY(1px);
 }
 
+/* Notes with comments become a paper-and-rail layout on roomy screens. */
+.note-comments-layout > article,
+.note-comments-layout > .comment-rail {
+  max-width: 56rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+.comment-composer > summary {
+  list-style: none;
+}
+.comment-composer > summary::-webkit-details-marker {
+  display: none;
+}
+.comment-composer[open] > summary {
+  border-bottom: 1px solid #e7e2d7;
+}
+.comment-composer[open] .comment-composer-icon {
+  transform: rotate(45deg);
+}
+.comment-composer-icon {
+  transition: transform 150ms ease;
+}
+
+@media (min-width: 1200px) {
+  .note-comments-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 20rem;
+    gap: 1rem;
+    align-items: start;
+  }
+  .note-comments-layout > article,
+  .note-comments-layout > .comment-rail {
+    max-width: none;
+    margin: 0;
+  }
+  .note-comments-layout > .comment-rail {
+    margin-top: 0;
+  }
+  .note-comments-layout--empty {
+    grid-template-columns: minmax(0, 1fr) 14rem;
+  }
+  .note-comments-layout .comment-rail [data-comment-quote] {
+    display: none;
+  }
+}
+
 /* Anchored comments: highlights in the note, the selection popover, and the
    pairing between a highlight and its thread item. */
 mark.comment-highlight {
@@ -151,7 +197,7 @@ mark.comment-highlight.is-pending {
   position: absolute;
   z-index: 20;
   padding: 0.3rem 0.75rem;
-  font: 500 0.8rem/1.4 "Inter", system-ui, sans-serif;
+  font: 500 0.8rem/1.4 "Karla", system-ui, sans-serif;
   color: #fff;
   background: #4338ca;
   border: none;
@@ -162,12 +208,43 @@ mark.comment-highlight.is-pending {
 }
 .comment-popover:hover { background: #3730a3; }
 #comments li.comment {
-  border-radius: 4px;
-  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+#comments li.comment-thread {
+  background-color: rgba(255, 255, 255, 0.68);
+}
+#comments li.comment-thread:hover,
+#comments li.comment-thread:focus-within {
+  background-color: #fff;
+}
+#comments li.comment-thread:hover {
+  border-color: #d6cfc2;
+}
+#comments li.comment > [data-comment-header] [data-confirm-delete] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+#comments li.comment:hover > [data-comment-header] [data-confirm-delete],
+#comments li.comment:focus-within > [data-comment-header] [data-confirm-delete] {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  #comments li.comment > [data-comment-header] [data-confirm-delete] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+#comments li.comment-thread:focus-visible {
+  outline: 2px solid rgba(79, 70, 229, 0.45);
+  outline-offset: 2px;
+}
+#comments li.comment-thread > [data-reply-control][open] {
+  margin-top: 0.5rem;
 }
 #comments li.comment.is-active {
-  background: rgba(251, 191, 36, 0.14);
-  box-shadow: 0 0 0 6px rgba(251, 191, 36, 0.14);
+  background: rgba(251, 191, 36, 0.08);
 }
 #comments li.is-anchored > [data-comment-quote] { cursor: pointer; }
 #comments li.is-anchored > [data-comment-quote]:hover { color: #4A443C; }

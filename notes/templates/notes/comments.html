@@ -1,20 +1,29 @@
 {% if note.comments_enabled %}
-<section id="comments" data-comments class="mt-6 bg-white border border-stone-200 shadow-sm rounded-lg p-8 sm:p-10">
-  <h2 class="font-serif text-2xl mb-6">Comments{% if comment_count %} <span class="font-sans text-base text-stone-400">{{ comment_count }}</span>{% endif %}</h2>
-
+<section id="comments" data-comments class="comment-rail mt-6">
   {% if comment_form.errors %}
-  <div class="rounded-md bg-red-50 border border-red-200 p-3 mb-6 text-sm text-red-800">
+  <div class="rounded-md bg-red-50 border border-red-200 p-3 mb-3 text-sm text-red-800">
     {% for errors in comment_form.errors.values %}{% for error in errors %}<p>{{ error }}</p>{% endfor %}{% endfor %}
   </div>
   {% endif %}
 
+  <details data-comment-composer class="comment-composer bg-white border border-stone-200 rounded-lg mb-2"{% if comment_form.errors %} open{% endif %}>
+    <summary class="flex items-center justify-between cursor-pointer select-none px-3 py-2.5 text-sm font-medium text-stone-700 hover:text-stone-900">
+      Add comment
+      <span aria-hidden="true" class="comment-composer-icon text-lg font-normal text-stone-400">+</span>
+    </summary>
+    <form method="post" action="{% url 'notes:comment_create' note.slug %}" data-comment-form class="p-3">
+      {% csrf_token %}
+      {% include "notes/_comment_fields.html" with body_value=comment_form.body.value anchor_fields=True %}
+    </form>
+  </details>
+
   {% if comment_threads %}
-  <ol class="space-y-6">
+  <ol class="space-y-2">
     {% for c in comment_threads %}
-    <li id="comment-{{ c.pk }}" class="comment" data-comment-id="{{ c.pk }}"{% if c.is_anchored %} data-quote="{{ c.quote }}" data-prefix="{{ c.prefix }}" data-suffix="{{ c.suffix }}" data-offset="{{ c.start_offset|default_if_none:'' }}"{% endif %}>
+    <li id="comment-{{ c.pk }}" class="comment comment-thread bg-white border border-stone-200 rounded-lg p-3 cursor-pointer" tabindex="0" data-comment-id="{{ c.pk }}"{% if c.is_anchored %} data-quote="{{ c.quote }}" data-prefix="{{ c.prefix }}" data-suffix="{{ c.suffix }}" data-offset="{{ c.start_offset|default_if_none:'' }}"{% endif %}>
       {% include "notes/_comment.html" %}
       {% if c.replies.all %}
-      <ol class="mt-4 ml-4 pl-4 border-l-2 border-stone-100 space-y-4">
+      <ol class="mt-3 pl-3 border-l-2 border-stone-100 space-y-3">
         {% for r in c.replies.all %}
         <li id="comment-{{ r.pk }}" class="comment" data-comment-id="{{ r.pk }}">
           {% include "notes/_comment.html" with c=r %}
@@ -22,24 +31,19 @@
         {% endfor %}
       </ol>
       {% endif %}
-      <details class="mt-3 ml-4 pl-4">
-        <summary class="cursor-pointer select-none text-xs text-stone-500 hover:text-stone-800">Reply</summary>
-        <form method="post" action="{% url 'notes:comment_create' note.slug %}" class="mt-3">
+      <details data-reply-control>
+        <summary class="sr-only">Reply</summary>
+        <form method="post" action="{% url 'notes:comment_create' note.slug %}">
           {% csrf_token %}
           <input type="hidden" name="parent" value="{{ c.pk }}">
-          {% include "notes/_comment_fields.html" with placeholder="Write a reply…" submit_label="Reply" %}
+          {% include "notes/_comment_fields.html" with placeholder="Write a reply…" submit_label="Reply" identity_label="Replying" secondary_submit=True %}
         </form>
       </details>
     </li>
     {% endfor %}
   </ol>
   {% else %}
-  <p class="text-sm text-stone-500">No comments yet.</p>
+  <p class="rounded-lg border border-dashed border-stone-200 px-4 py-5 text-center text-sm text-stone-500">No comments yet.</p>
   {% endif %}
-
-  <form method="post" action="{% url 'notes:comment_create' note.slug %}" data-comment-form class="mt-8 pt-6 border-t border-stone-100">
-    {% csrf_token %}
-    {% include "notes/_comment_fields.html" with body_value=comment_form.body.value anchor_fields=True %}
-  </form>
 </section>
 {% endif %}

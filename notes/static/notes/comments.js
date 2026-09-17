@@ -205,6 +205,8 @@
     showChip(sel.quote);
     unwrap(pendingMarks);
     pendingMarks = highlight(sel.start, sel.end, "pending", "is-pending");
+    var composer = form.closest("[data-comment-composer]");
+    if (composer) composer.open = true;
     form.scrollIntoView({ behavior: "smooth", block: "center" });
     var textarea = form.querySelector("textarea");
     if (textarea) textarea.focus({ preventScroll: true });
@@ -350,9 +352,82 @@
     });
   }
 
+  // Clicking a thread card opens its reply form without reserving a visible
+  // action row. Interactive children keep their own click behaviour.
+  function armReplyCards() {
+    var threads = section.querySelectorAll("li.comment-thread");
+
+    function openReply(thread) {
+      threads.forEach(function (other) {
+        var otherDetails = other.querySelector(":scope > [data-reply-control]");
+        if (otherDetails && other !== thread) otherDetails.open = false;
+      });
+      var details = thread.querySelector(":scope > [data-reply-control]");
+      if (details) details.open = true;
+    }
+
+    threads.forEach(function (thread) {
+      thread.addEventListener("click", function (event) {
+        if (event.target.closest("a, button, form, input, textarea, select, label, details")) return;
+        var selection = window.getSelection();
+        if (selection && !selection.isCollapsed) return;
+        openReply(thread);
+      });
+      thread.addEventListener("keydown", function (event) {
+        if (event.target !== thread || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        openReply(thread);
+        var textarea = thread.querySelector(":scope > [data-reply-control] textarea");
+        if (textarea) textarea.focus();
+      });
+    });
+  }
+
+  function armNameEditors() {
+    section.querySelectorAll("[data-name-field]").forEach(function (field) {
+      var form = field.closest("form");
+      var summary = form && form.querySelector("[data-name-summary]");
+      var edit = summary && summary.querySelector("[data-name-edit]");
+      var display = summary && summary.querySelector("[data-name-display]");
+      var input = field.querySelector('input[name="name"]');
+      var accept = field.querySelector("[data-name-accept]");
+      var cancel = field.querySelector("[data-name-cancel]");
+      if (!form || !summary || !edit || !display || !input || !accept || !cancel) return;
+
+      function close() {
+        field.hidden = true;
+        summary.hidden = false;
+      }
+
+      edit.addEventListener("click", function () {
+        summary.hidden = true;
+        field.hidden = false;
+        input.focus();
+        input.select();
+      });
+      accept.addEventListener("click", function () {
+        var name = input.value.trim();
+        if (!name) {
+          input.focus();
+          return;
+        }
+        input.value = name;
+        input.dataset.savedName = name;
+        display.textContent = name;
+        close();
+      });
+      cancel.addEventListener("click", function () {
+        input.value = input.dataset.savedName;
+        close();
+      });
+    });
+  }
+
   // ---- boot ------------------------------------------------------------------
 
   armDeleteForms();
+  armReplyCards();
+  armNameEditors();
 
   resolveAll();
 

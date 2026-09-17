@@ -14,14 +14,21 @@
 {% endif %}
 {% if not user.is_authenticated %}
   {% if commenter_name %}
-  <p class="mb-2 text-xs text-stone-500">
-    Commenting as <span class="font-medium text-stone-800">{{ commenter_name }}</span>
-    <button type="button" class="ml-1 underline hover:text-stone-800"
-            onclick="var f=this.closest('form');var w=f.querySelector('[data-name-field]');w.hidden=false;w.querySelector('input').focus();this.parentNode.hidden=true">change</button>
+  <p data-name-summary class="mb-2 text-xs text-stone-500">
+    {{ identity_label|default:"Commenting" }} as
+    <button type="button" data-name-edit title="Change name" aria-label="Change name"
+            class="font-medium text-stone-800 border-b border-dotted border-stone-400 hover:border-stone-700"
+            ><span data-name-display>{{ commenter_name }}</span></button>
   </p>
   <div data-name-field hidden class="mb-2">
-    <input type="text" name="name" maxlength="80" value="{{ commenter_name }}" placeholder="Your name" aria-label="Name" autocomplete="name"
-           class="block w-full rounded-md border-stone-300 shadow-sm py-1.5 px-3 text-sm border focus:ring-indigo-500 focus:border-indigo-500">
+    <div class="flex items-center gap-1.5">
+      <input type="text" name="name" maxlength="80" value="{{ commenter_name }}" data-saved-name="{{ commenter_name }}" placeholder="Your name" aria-label="Name" autocomplete="name"
+             class="block min-w-0 flex-1 rounded-md border-stone-300 shadow-sm py-1.5 px-3 text-sm border focus:ring-indigo-500 focus:border-indigo-500">
+      <button type="button" data-name-accept aria-label="Use this name" title="Use this name"
+              class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-stone-300 bg-white text-sm text-emerald-700 hover:bg-stone-50">✓</button>
+      <button type="button" data-name-cancel aria-label="Cancel name change" title="Cancel"
+              class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-stone-300 bg-white text-lg leading-none text-stone-500 hover:bg-stone-50 hover:text-stone-800">×</button>
+    </div>
   </div>
   {% else %}
   <div class="mb-2">
@@ -33,5 +40,5 @@
 <textarea name="body" rows="3" required maxlength="5000" aria-label="Comment" placeholder="{{ placeholder|default:'Write a comment…' }}"
           class="block w-full rounded-md border-stone-300 shadow-sm py-2 px-3 text-sm border focus:ring-indigo-500 focus:border-indigo-500">{{ body_value|default_if_none:'' }}</textarea>
 <div class="mt-2 flex justify-end">
-  <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">{{ submit_label|default:'Post comment' }}</button>
+  <button type="submit" class="inline-flex items-center border font-medium rounded-md {% if secondary_submit %}px-2.5 py-1 text-xs border-stone-300 bg-white text-stone-600 hover:bg-stone-50 hover:text-stone-900{% else %}px-3 py-1.5 text-sm border-transparent shadow-sm text-white bg-indigo-600 hover:bg-indigo-700{% endif %}">{{ submit_label|default:'Post comment' }}</button>
 </div>
